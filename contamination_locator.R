@@ -124,7 +124,7 @@ for(i in seq(length(data[["Select_conta"]]))){
     end_index=data[["Select_conta"]][i+1]
   }else{ #well, the window index i+1 is not touching the window i, so i is the last of its island, and the island can be written. i+1 is the start of a new island.
     end_index=data[["Select_conta"]][i]
-    line=paste(sep="\t", as.character(data[["conta"]][start_index,1]),"SignatureGohtam\tregion",data[["conta"]][start_index,2],data[["conta"]][end_index,c(3)])#,c(paste(sep="/", data[["conta"]][start_index:end_index,4])))
+    line=paste(sep="\t", as.character(data[["conta"]][start_index,1]),"SignatureGohtam\tregion",data[["conta"]][start_index,2],data[["conta"]][end_index,c(3)],"\t.\t.\t.")#,c(paste(sep="/", data[["conta"]][start_index:end_index,4])))
 #     print(line)
     write(x=line,append=TRUE, file = paste(basename(genome_fasta),"_contaminant_",basename(conta_sample_fasta),".gff",sep=""),ncolumns=1)
     start_index=data[["Select_conta"]][i+1]
