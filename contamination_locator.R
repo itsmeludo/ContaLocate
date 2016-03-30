@@ -39,21 +39,26 @@ spec <- matrix(c(
         'conta_learn'    , 'c', 1, "character", "output filename (optional)",
         'win_step'       , 't', 2, "int", "output filename (optional)",
         'win_size'       , 'w', 2, "int", "output filename (optional)",
-        'dist'           , 'd', 2, "character", "KL, JSD or Eucl"
-        
+        'dist'           , 'd', 2, "character", "Divergence metric used to compare profiles: (KL), JSD or Eucl",
+        'manual_threshold' , 'm', 0, "logical", "You will be asked to manually set the thresholds",
+        'help'           , 'h', 0, "logical",   "this help"
 ),ncol=5,byrow=T)
 
-#         'manual_threshold'      , 'm', 0, "logical", "You will be asked to manually set the thresholds"
+#         
 
 opt = getopt(spec);
 # [[""]]
 if (!is.null(opt[["help"]]) || is.null(opt[["genome"]])) {
     cat(paste(getopt(spec, usage=T),"\n"));
 }
-cat(paste(getopt(spec, usage=T),"\n"));
+# print("parameters:")
+# print(paste(names(opt),opt[names(opt)]))
+
+
+# cat(paste(getopt(spec, usage=T),"\n"));
 genome_fasta = opt[["genome"]]
-conta_sample_fasta = opt[["conta"]]
-host_sample_fasta = ifelse(is.null(opt[["host_learn"]]), test <- "" , test <-opt[["host"]])
+conta_sample_fasta = opt[["conta_learn"]]
+host_sample_fasta = ifelse(is.null(opt[["host_learn"]]), test <- "" , test <-opt[["host_learn"]])
 dist = ifelse(is.null(opt[["dist"]]), test <- dist , test <-opt[["dist"]])
 win_step = ifelse(is.null(opt[["win_step"]]), test <- win_step , test <-opt[["win_step"]])
 win_size = ifelse(is.null(opt[["win_size"]]), test <- win_size , test <-opt[["win_size"]])
@@ -62,14 +67,19 @@ win_size = ifelse(is.null(opt[["win_size"]]), test <- win_size , test <-opt[["wi
 ### compute profiles:
 data=list()
 if ( is.null(opt[["host_learn"]])) {
-  system(paste("ionice -c2 -n3 Kount.py -i ",genome_fasta ," -w ",win_size," -t ",win_step," -d  ",dist," -n 0.5",sep=""))
-  data[["host"]]=read.delim(file=paste(basename(genome_fasta),".mcp_windows_vs_whole_",dist,".dist",sep=""), header=F)
+  cmd=paste("bash -lic \"ionice -c2 -n3 Kount.py -i ",genome_fasta ," -w ",win_size," -t ",win_step," -c ",conta_sample_fasta," -d  ",dist," -n 0.5\"",sep="")
+  print(cmd)
+  system(cmd)
+  data[["host"]]=read.delim(file=paste(basename(genome_fasta),".mcp_hostwindows_vs_wholegenome_",dist,".dist",sep=""), header=F)
 }else{
-  system(paste("ionice -c2 -n3 Kount.py -i ",genome_fasta ," -w ",win_size," -t ",win_step," -c ",conta_sample_fasta," -r ",host_sample_fasta," -d ",dist," -n 0.5",sep=""))
+  cmd=paste("bash -lic \"ionice -c2 -n3 Kount.py -i ",genome_fasta ," -w ",win_size," -t ",win_step," -c ",conta_sample_fasta," -r ",host_sample_fasta," -d ",dist," -n 0.5\"",sep="")
+  print(cmd)
+  system(cmd)
   data[["host"]]=read.delim(file=paste(basename(genome_fasta),".mcp_hostwindows_vs_host_",basename(host_sample_fasta),"_",dist,".dist",sep=""), header=F)
 }
 data[["conta"]]=read.delim(file=paste(basename(genome_fasta),".mcp_hostwindows_vs_conta_",basename(conta_sample_fasta),"_",dist,".dist",sep=""), header=F)
 
+print("end comp")
 
 if (! is.null(opt[["manual_threshold"]])) {
   
@@ -102,8 +112,7 @@ if (! is.null(opt[["manual_threshold"]])) {
     threshold_host=new_threshold
   }
 
-}
-else{
+}else{
 
   ### Humans are not worthy to set the thresholds, stats will guess it:
 
