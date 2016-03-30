@@ -11,8 +11,7 @@
 ### dependencies:
 library(gtools)
 library(getopt) #install.packages("getopt")   #maybe launch it as admin or root if you want it for other users too.
-# Kount.py in the exec PATH or where this script is launched
-
+### Kount.py in the exec PATH or where this script is launched
 
 
 ### Standard parameters
@@ -44,6 +43,7 @@ spec <- matrix(c(
         
 ),ncol=5,byrow=T)
 
+#         'manual_threshold'      , 'm', 0, "logical", "You will be asked to manually set the thresholds"
 
 opt = getopt(spec);
 # [[""]]
@@ -71,35 +71,66 @@ if ( is.null(opt[["host_learn"]])) {
 data[["conta"]]=read.delim(file=paste(basename(genome_fasta),".mcp_hostwindows_vs_conta_",basename(conta_sample_fasta),"_",dist,".dist",sep=""), header=F)
 
 
-### Ask the trusty human to set the thresholds:
+if (! is.null(opt[["manual_threshold"]])) {
+  
+  ### Ask the trusty human to set the thresholds:
 
-threshold_conta=0
-repeat{
-  plot(density(data[["conta"]][,4],na.rm=TRUE),xlim=c(0,5000),lwd=2)
-  abline(v=threshold_conta,col="red")
-  new_threshold= ask("Give a different threshold value for the contaminant threshold. Give the same value to confirm it.\n")
-   new_threshold <- as.numeric(new_threshold)
-   
-  if(new_threshold==threshold_conta){
-    break
+  threshold_conta=0
+  repeat{
+    plot(density(data[["conta"]][,4],na.rm=TRUE),xlim=c(0,5000),lwd=2)
+    abline(v=threshold_conta,col="red")
+    new_threshold= ask("Give a different threshold value for the contaminant threshold. Give the same value to confirm it.\n")
+    new_threshold <- as.numeric(new_threshold)
+    
+    if(new_threshold==threshold_conta){
+      break
+    }
+    threshold_conta=new_threshold
   }
-  threshold_conta=new_threshold
-}
 
 
-threshold_host=0
-repeat{
-  plot(density(data[["host"]][,4],na.rm=TRUE),xlim=c(0,5000),lwd=2)
-  abline(v=threshold_host,col="red")
-  new_threshold= ask("Give a different threshold value for the host threshold. Give the same value to confirm it.\n")
-   new_threshold <- as.numeric(new_threshold)
-   
-  if(new_threshold==threshold_host){
-    break
+  threshold_host=0
+  repeat{
+    plot(density(data[["host"]][,4],na.rm=TRUE),xlim=c(0,5000),lwd=2)
+    abline(v=threshold_host,col="red")
+    new_threshold= ask("Give a different threshold value for the host threshold. Give the same value to confirm it.\n")
+    new_threshold <- as.numeric(new_threshold)
+    
+    if(new_threshold==threshold_host){
+      break
+    }
+    threshold_host=new_threshold
   }
-  threshold_host=new_threshold
-}
 
+}
+else{
+
+  ### Humans are not worthy to set the thresholds, stats will guess it:
+
+
+  des_conta=density(data[["conta"]][which(!is.nan(data[["conta"]][,4]) ),4] )
+  plot(des_conta,lwd=2)
+  # points(x= des_conta[["x"]][which.max(des_conta[["y"]])],y= des_conta[["y"]][which.max(des_conta[["y"]])])
+  steep=des_conta[["y"]][seq(which.max(des_conta[["y"]]),0)]
+  i=1
+  while(steep[i+1]<steep[i]){i=i+1}
+  conta_min=(which.max(des_conta[["y"]])-i)
+  abline(v=des_conta[["x"]][conta_min],col="blue",lwd=2)
+  threshold_conta=des_conta[["x"]][conta_min]
+  ask("Please inspect that the automatic threshold for the contaminant was set-up properly.")
+
+
+  des_host=density(data[["host"]][which(!is.nan(data[["host"]][,4]) ),4] )
+  plot(des_host,lwd=2)
+  # points(x= des_host[["x"]][which.max(des_host[["y"]])],y= des_host[["y"]][which.max(des_host[["y"]])])
+  steep=des_host[["y"]][seq(which.max(des_host[["y"]]),length(des_host[["y"]]))]
+  i=1
+  while(steep[i+1]<steep[i]){i=i+1}
+  host_min=(which.max(des_host[["y"]])+i)
+  abline(v=des_host[["x"]][host_min],col="blue",lwd=2)
+  threshold_host=des_host[["x"]][host_min]
+  ask("Please inspect that the automatic threshold for the host was set-up properly.")
+}
 
 
 ### Perform the split over the double threshold
@@ -114,7 +145,7 @@ data[["windows_conta"]]=data[["conta"]][data[["Select_conta"]],]
 
 
 
-### write a GFF file of the positions of the targeted species
+### Regroups contiguous windows into islands and write a GFF file of the positions of the targeted species
 # regroup_struct=data[["Select_conta"]]
 write(x="##gff-version 2", file = paste(basename(genome_fasta),"_contaminant_",basename(conta_sample_fasta),".gff",sep=""),ncolumns=1)
 start_index=data[["Select_conta"]][1]
