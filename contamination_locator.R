@@ -3,7 +3,7 @@
 ### Author: Ludovic V. Mallet, PhD
 ### 2016.03.22
 ### licence: GPLv3
-### Version: Alpha.1
+### Version: Alpha.2
 ### Garanteed with misatkes. <- Including this one.
 ### Important notes:
 
