@@ -39,6 +39,7 @@ __email__ = ""
 import os, re, math, sys, argparse
 from collections import Counter
 import multiprocessing
+from itertools import product
 
 import numpy
 from Bio import SeqIO
@@ -48,40 +49,45 @@ from Bio.Seq import Seq
 numpy.seterr(divide='ignore', invalid='ignore')
 #TBF: wtf way to long ! (-:
 #minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry=20
+#LM Fine by me, this very variable makes the implementation very much complicated and triggers the multicore or serial mode depending on the number of windows in a contig. therefore I wanted to be explicit on what it does. But I guess this mere sentence explqins it now ^^.
 min_nb_w_per_fasta_for_mul_cpu=20
+
 # TBF too ugly on one line 
-word_order =( "CCCC", "GCCC", "CGCC", "GGCC", "CCGC", "GCGC", "CGGC", "GGGC", 
-             "CCCG", "GCCG", "CGCG", "GGCG", "CCGG", "GCGG", "CGGG", "GGGG", 
-             "ACCC", "TCCC", "AGCC", "TGCC", "ACGC", "TCGC", "AGGC", "TGGC", 
-             "ACCG", "TCCG", "AGCG", "TGCG", "ACGG", "TCGG", "AGGG", "TGGG", 
-             "CACC", "GACC", "CTCC", "GTCC", "CAGC", "GAGC", "CTGC", "GTGC", 
-             "CACG", "GACG", "CTCG", "GTCG", "CAGG", "GAGG", "CTGG", "GTGG", 
-             "AACC", "TACC", "ATCC", "TTCC", "AAGC", "TAGC", "ATGC", "TTGC", 
-             "AACG", "TACG", "ATCG", "TTCG", "AAGG", "TAGG", "ATGG", "TTGG", 
-             "CCAC", "GCAC", "CGAC", "GGAC", "CCTC", "GCTC", "CGTC", "GGTC", 
-             "CCAG", "GCAG", "CGAG", "GGAG", "CCTG", "GCTG", "CGTG", "GGTG", 
-             "ACAC", "TCAC", "AGAC", "TGAC", "ACTC", "TCTC", "AGTC", "TGTC", 
-             "ACAG", "TCAG", "AGAG", "TGAG", "ACTG", "TCTG", "AGTG", "TGTG", 
-             "CAAC", "GAAC", "CTAC", "GTAC", "CATC", "GATC", "CTTC", "GTTC", 
-             "CAAG", "GAAG", "CTAG", "GTAG", "CATG", "GATG", "CTTG", "GTTG", 
-             "AAAC", "TAAC", "ATAC", "TTAC", "AATC", "TATC", "ATTC", "TTTC", 
-             "AAAG", "TAAG", "ATAG", "TTAG", "AATG", "TATG", "ATTG", "TTTG", 
-             "CCCA", "GCCA", "CGCA", "GGCA", "CCGA", "GCGA", "CGGA", "GGGA", 
-             "CCCT", "GCCT", "CGCT", "GGCT", "CCGT", "GCGT", "CGGT", "GGGT", 
-             "ACCA", "TCCA", "AGCA", "TGCA", "ACGA", "TCGA", "AGGA", "TGGA", 
-             "ACCT", "TCCT", "AGCT", "TGCT", "ACGT", "TCGT", "AGGT", "TGGT", 
-             "CACA", "GACA", "CTCA", "GTCA", "CAGA", "GAGA", "CTGA", "GTGA", 
-             "CACT", "GACT", "CTCT", "GTCT", "CAGT", "GAGT", "CTGT", "GTGT", 
-             "AACA", "TACA", "ATCA", "TTCA", "AAGA", "TAGA", "ATGA", "TTGA", 
-             "AACT", "TACT", "ATCT", "TTCT", "AAGT", "TAGT", "ATGT", "TTGT", 
-             "CCAA", "GCAA", "CGAA", "GGAA", "CCTA", "GCTA", "CGTA", "GGTA", 
-             "CCAT", "GCAT", "CGAT", "GGAT", "CCTT", "GCTT", "CGTT", "GGTT", 
-             "ACAA", "TCAA", "AGAA", "TGAA", "ACTA", "TCTA", "AGTA", "TGTA", 
-             "ACAT", "TCAT", "AGAT", "TGAT", "ACTT", "TCTT", "AGTT", "TGTT", 
-             "CAAA", "GAAA", "CTAA", "GTAA", "CATA", "GATA", "CTTA", "GTTA", 
-             "CAAT", "GAAT", "CTAT", "GTAT", "CATT", "GATT", "CTTT", "GTTT", 
-             "AAAA", "TAAA", "ATAA", "TTAA", "AATA", "TATA", "ATTA", "TTTA", 
-             "AAAT", "TAAT", "ATAT", "TTAT", "AATT", "TATT", "ATTT", "TTTT")
+#LM Actually this only needed to represent the matrix according to the spatialisation of the chaos game representation. It only works with 4-mers and I'm too lazy to port the algo to make it generic because it is not used in the program. In PhylOligo, I generalised with "word_universe" at the loss of the CGR representation (order is wrong to represent as a matrix with kmer spacial coherence).
+#so, I comment it, it is only  necessary for vector_to_matrix() to be consistent with the GOHTAM database which is not connected here anyway so that the matrix can be sought against the DB instead of having to recompute the profile first. It would have been great, but recomputing profile within GOHTAM is cheaper in brain time, and out of scope for this Contalocate in this version.
+#I changed word_order to word_universe in frequency() as I implemented in PhylOligo afterwards.
+#word_order =( "CCCC", "GCCC", "CGCC", "GGCC", "CCGC", "GCGC", "CGGC", "GGGC", 
+             #"CCCG", "GCCG", "CGCG", "GGCG", "CCGG", "GCGG", "CGGG", "GGGG", 
+             #"ACCC", "TCCC", "AGCC", "TGCC", "ACGC", "TCGC", "AGGC", "TGGC", 
+             #"ACCG", "TCCG", "AGCG", "TGCG", "ACGG", "TCGG", "AGGG", "TGGG", 
+             #"CACC", "GACC", "CTCC", "GTCC", "CAGC", "GAGC", "CTGC", "GTGC", 
+             #"CACG", "GACG", "CTCG", "GTCG", "CAGG", "GAGG", "CTGG", "GTGG", 
+             #"AACC", "TACC", "ATCC", "TTCC", "AAGC", "TAGC", "ATGC", "TTGC", 
+             #"AACG", "TACG", "ATCG", "TTCG", "AAGG", "TAGG", "ATGG", "TTGG", 
+             #"CCAC", "GCAC", "CGAC", "GGAC", "CCTC", "GCTC", "CGTC", "GGTC", 
+             #"CCAG", "GCAG", "CGAG", "GGAG", "CCTG", "GCTG", "CGTG", "GGTG", 
+             #"ACAC", "TCAC", "AGAC", "TGAC", "ACTC", "TCTC", "AGTC", "TGTC", 
+             #"ACAG", "TCAG", "AGAG", "TGAG", "ACTG", "TCTG", "AGTG", "TGTG", 
+             #"CAAC", "GAAC", "CTAC", "GTAC", "CATC", "GATC", "CTTC", "GTTC", 
+             #"CAAG", "GAAG", "CTAG", "GTAG", "CATG", "GATG", "CTTG", "GTTG", 
+             #"AAAC", "TAAC", "ATAC", "TTAC", "AATC", "TATC", "ATTC", "TTTC", 
+             #"AAAG", "TAAG", "ATAG", "TTAG", "AATG", "TATG", "ATTG", "TTTG", 
+             #"CCCA", "GCCA", "CGCA", "GGCA", "CCGA", "GCGA", "CGGA", "GGGA", 
+             #"CCCT", "GCCT", "CGCT", "GGCT", "CCGT", "GCGT", "CGGT", "GGGT", 
+             #"ACCA", "TCCA", "AGCA", "TGCA", "ACGA", "TCGA", "AGGA", "TGGA", 
+             #"ACCT", "TCCT", "AGCT", "TGCT", "ACGT", "TCGT", "AGGT", "TGGT", 
+             #"CACA", "GACA", "CTCA", "GTCA", "CAGA", "GAGA", "CTGA", "GTGA", 
+             #"CACT", "GACT", "CTCT", "GTCT", "CAGT", "GAGT", "CTGT", "GTGT", 
+             #"AACA", "TACA", "ATCA", "TTCA", "AAGA", "TAGA", "ATGA", "TTGA", 
+             #"AACT", "TACT", "ATCT", "TTCT", "AAGT", "TAGT", "ATGT", "TTGT", 
+             #"CCAA", "GCAA", "CGAA", "GGAA", "CCTA", "GCTA", "CGTA", "GGTA", 
+             #"CCAT", "GCAT", "CGAT", "GGAT", "CCTT", "GCTT", "CGTT", "GGTT", 
+             #"ACAA", "TCAA", "AGAA", "TGAA", "ACTA", "TCTA", "AGTA", "TGTA", 
+             #"ACAT", "TCAT", "AGAT", "TGAT", "ACTT", "TCTT", "AGTT", "TGTT", 
+             #"CAAA", "GAAA", "CTAA", "GTAA", "CATA", "GATA", "CTTA", "GTTA", 
+             #"CAAT", "GAAT", "CTAT", "GTAT", "CATT", "GATT", "CTTT", "GTTT", 
+             #"AAAA", "TAAA", "ATAA", "TTAA", "AATA", "TATA", "ATTA", "TTTA", 
+             #"AAAT", "TAAT", "ATAT", "TTAT", "AATT", "TATT", "ATTT", "TTTT")
 
 
 def KL(a,b):
@@ -169,7 +175,9 @@ def frequency(seq, ksize=4, strand="both"):
     word_count = sum(c.values())
     if (word_count > 0):
         ret=list()
-        for w in word_order:
+        word_universe=list(map("".join,(list(product(("C","G","A","T"),("C","G","A","T"),("C","G","A","T"),("C","G","A","T"))))))
+        for w in word_universe:
+        #for w in word_order:
             if(c.get(w) != None):
                 ret.append(c.get(w)/word_count)
             else:
