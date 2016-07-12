@@ -2,7 +2,7 @@
 Bioinformatics / Genomics 
 A tool to extract DNA segments with homogeneous olignonucleotide composition from a genome assembly.
 * Learns a compositional profile for the host and the contaminant, previoulsy identified with i.e. [PhylOligo](https://github.com/itsmeludo/PhylOligo).
-* Generate a GFF3 map of the contaminant positions in the genome.
+* Generates a GFF3 map of the contaminant positions in the genome.
  
  
 Once you have explored your assembly's oligonucleotide composition, identified and selected -potentially partial- contaminant material, use ContaLocate to target species-specific contaminant DNA according to a double parametrical threshold.
