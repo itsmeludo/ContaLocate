@@ -36,8 +36,7 @@ __version__ = "0.1"
 __status__ = "alpha"
 __email__ = ""
 
-from optparse import OptionParser
-import os, re, math, sys
+import os, re, math, sys, argparse
 from collections import Counter
 import multiprocessing
 
@@ -47,8 +46,42 @@ from Bio.Seq import Seq
 
 
 numpy.seterr(divide='ignore', invalid='ignore')
-minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry=20
-word_order =( "CCCC", "GCCC", "CGCC", "GGCC", "CCGC", "GCGC", "CGGC", "GGGC", "CCCG", "GCCG", "CGCG", "GGCG", "CCGG", "GCGG", "CGGG", "GGGG", "ACCC", "TCCC", "AGCC", "TGCC", "ACGC", "TCGC", "AGGC", "TGGC", "ACCG", "TCCG", "AGCG", "TGCG", "ACGG", "TCGG", "AGGG", "TGGG", "CACC", "GACC", "CTCC", "GTCC", "CAGC", "GAGC", "CTGC", "GTGC", "CACG", "GACG", "CTCG", "GTCG", "CAGG", "GAGG", "CTGG", "GTGG", "AACC", "TACC", "ATCC", "TTCC", "AAGC", "TAGC", "ATGC", "TTGC", "AACG", "TACG", "ATCG", "TTCG", "AAGG", "TAGG", "ATGG", "TTGG", "CCAC", "GCAC", "CGAC", "GGAC", "CCTC", "GCTC", "CGTC", "GGTC", "CCAG", "GCAG", "CGAG", "GGAG", "CCTG", "GCTG", "CGTG", "GGTG", "ACAC", "TCAC", "AGAC", "TGAC", "ACTC", "TCTC", "AGTC", "TGTC", "ACAG", "TCAG", "AGAG", "TGAG", "ACTG", "TCTG", "AGTG", "TGTG", "CAAC", "GAAC", "CTAC", "GTAC", "CATC", "GATC", "CTTC", "GTTC", "CAAG", "GAAG", "CTAG", "GTAG", "CATG", "GATG", "CTTG", "GTTG", "AAAC", "TAAC", "ATAC", "TTAC", "AATC", "TATC", "ATTC", "TTTC", "AAAG", "TAAG", "ATAG", "TTAG", "AATG", "TATG", "ATTG", "TTTG", "CCCA", "GCCA", "CGCA", "GGCA", "CCGA", "GCGA", "CGGA", "GGGA", "CCCT", "GCCT", "CGCT", "GGCT", "CCGT", "GCGT", "CGGT", "GGGT", "ACCA", "TCCA", "AGCA", "TGCA", "ACGA", "TCGA", "AGGA", "TGGA", "ACCT", "TCCT", "AGCT", "TGCT", "ACGT", "TCGT", "AGGT", "TGGT", "CACA", "GACA", "CTCA", "GTCA", "CAGA", "GAGA", "CTGA", "GTGA", "CACT", "GACT", "CTCT", "GTCT", "CAGT", "GAGT", "CTGT", "GTGT", "AACA", "TACA", "ATCA", "TTCA", "AAGA", "TAGA", "ATGA", "TTGA", "AACT", "TACT", "ATCT", "TTCT", "AAGT", "TAGT", "ATGT", "TTGT", "CCAA", "GCAA", "CGAA", "GGAA", "CCTA", "GCTA", "CGTA", "GGTA", "CCAT", "GCAT", "CGAT", "GGAT", "CCTT", "GCTT", "CGTT", "GGTT", "ACAA", "TCAA", "AGAA", "TGAA", "ACTA", "TCTA", "AGTA", "TGTA", "ACAT", "TCAT", "AGAT", "TGAT", "ACTT", "TCTT", "AGTT", "TGTT", "CAAA", "GAAA", "CTAA", "GTAA", "CATA", "GATA", "CTTA", "GTTA", "CAAT", "GAAT", "CTAT", "GTAT", "CATT", "GATT", "CTTT", "GTTT", "AAAA", "TAAA", "ATAA", "TTAA", "AATA", "TATA", "ATTA", "TTTA", "AAAT", "TAAT", "ATAT", "TTAT", "AATT", "TATT", "ATTT", "TTTT")
+#TBF: wtf way to long ! (-:
+#minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry=20
+min_nb_w_per_fasta_for_mul_cpu=20
+# TBF too ugly on one line 
+word_order =( "CCCC", "GCCC", "CGCC", "GGCC", "CCGC", "GCGC", "CGGC", "GGGC", 
+             "CCCG", "GCCG", "CGCG", "GGCG", "CCGG", "GCGG", "CGGG", "GGGG", 
+             "ACCC", "TCCC", "AGCC", "TGCC", "ACGC", "TCGC", "AGGC", "TGGC", 
+             "ACCG", "TCCG", "AGCG", "TGCG", "ACGG", "TCGG", "AGGG", "TGGG", 
+             "CACC", "GACC", "CTCC", "GTCC", "CAGC", "GAGC", "CTGC", "GTGC", 
+             "CACG", "GACG", "CTCG", "GTCG", "CAGG", "GAGG", "CTGG", "GTGG", 
+             "AACC", "TACC", "ATCC", "TTCC", "AAGC", "TAGC", "ATGC", "TTGC", 
+             "AACG", "TACG", "ATCG", "TTCG", "AAGG", "TAGG", "ATGG", "TTGG", 
+             "CCAC", "GCAC", "CGAC", "GGAC", "CCTC", "GCTC", "CGTC", "GGTC", 
+             "CCAG", "GCAG", "CGAG", "GGAG", "CCTG", "GCTG", "CGTG", "GGTG", 
+             "ACAC", "TCAC", "AGAC", "TGAC", "ACTC", "TCTC", "AGTC", "TGTC", 
+             "ACAG", "TCAG", "AGAG", "TGAG", "ACTG", "TCTG", "AGTG", "TGTG", 
+             "CAAC", "GAAC", "CTAC", "GTAC", "CATC", "GATC", "CTTC", "GTTC", 
+             "CAAG", "GAAG", "CTAG", "GTAG", "CATG", "GATG", "CTTG", "GTTG", 
+             "AAAC", "TAAC", "ATAC", "TTAC", "AATC", "TATC", "ATTC", "TTTC", 
+             "AAAG", "TAAG", "ATAG", "TTAG", "AATG", "TATG", "ATTG", "TTTG", 
+             "CCCA", "GCCA", "CGCA", "GGCA", "CCGA", "GCGA", "CGGA", "GGGA", 
+             "CCCT", "GCCT", "CGCT", "GGCT", "CCGT", "GCGT", "CGGT", "GGGT", 
+             "ACCA", "TCCA", "AGCA", "TGCA", "ACGA", "TCGA", "AGGA", "TGGA", 
+             "ACCT", "TCCT", "AGCT", "TGCT", "ACGT", "TCGT", "AGGT", "TGGT", 
+             "CACA", "GACA", "CTCA", "GTCA", "CAGA", "GAGA", "CTGA", "GTGA", 
+             "CACT", "GACT", "CTCT", "GTCT", "CAGT", "GAGT", "CTGT", "GTGT", 
+             "AACA", "TACA", "ATCA", "TTCA", "AAGA", "TAGA", "ATGA", "TTGA", 
+             "AACT", "TACT", "ATCT", "TTCT", "AAGT", "TAGT", "ATGT", "TTGT", 
+             "CCAA", "GCAA", "CGAA", "GGAA", "CCTA", "GCTA", "CGTA", "GGTA", 
+             "CCAT", "GCAT", "CGAT", "GGAT", "CCTT", "GCTT", "CGTT", "GGTT", 
+             "ACAA", "TCAA", "AGAA", "TGAA", "ACTA", "TCTA", "AGTA", "TGTA", 
+             "ACAT", "TCAT", "AGAT", "TGAT", "ACTT", "TCTT", "AGTT", "TGTT", 
+             "CAAA", "GAAA", "CTAA", "GTAA", "CATA", "GATA", "CTTA", "GTTA", 
+             "CAAT", "GAAT", "CTAT", "GTAT", "CATT", "GATT", "CTTT", "GTTT", 
+             "AAAA", "TAAA", "ATAA", "TTAA", "AATA", "TATA", "ATTA", "TTTA", 
+             "AAAT", "TAAT", "ATAT", "TTAT", "AATT", "TATT", "ATTT", "TTTT")
 
 
 def KL(a,b):
@@ -104,33 +137,34 @@ def select_strand (seq,strand="both"):
     elif(strand == "plus"):
         return str(seq).upper()
     else:
+        # TBF: should an exit or an Exception be raised here? I guess the program should never go here right?
         return 1
    
    
-def frequency (seq,ksize=4,strand="both"):
+def frequency(seq, ksize=4, strand="both"):
     """ TODO add description
     """
-    seq=select_strand(seq,strand)
-    seq_words=list()
-    d=dict()
+    seq = select_strand(seq, strand)
+    seq_words = list()
+    d = dict()
     #excludes what is not a known characterised nucleotide 
-    for s in re.split('[^ACGTacgt]+',seq): 
-        seq_letters=list(s)
+    for s in re.split('[^ACGTacgt]+', seq): 
+        seq_letters = list(s)
         ##print(len(s))
-        if (len(seq_letters) >=ksize):
+        if (len(seq_letters) >= ksize):
             # launch k-1 times the word generation with 1 nucleotide shift
             # every iteration to have overlapping words.
             for i in range(ksize-1):
                 #generate words from seq_letters
-                words=list((zip(*(iter(seq_letters),)*ksize)))
+                words = list((zip(*(iter(seq_letters),)*ksize)))
                 # adds the words for this subsequence and 
                 # frame to the total list of words
-                seq_words.extend(list(map(''.join,words))) 
+                seq_words.extend(list(map(''.join, words))) 
                 # shift one to compute overlapping words at the next iteration
                 seq_letters.pop(0) 
     c = Counter(seq_words)
-    word_count=sum(c.values())
-    if(word_count > 0):
+    word_count = sum(c.values())
+    if (word_count > 0):
         ret=list()
         for w in word_order:
             if(c.get(w) != None):
@@ -139,6 +173,7 @@ def frequency (seq,ksize=4,strand="both"):
                 ret.append(0)
         return ret
     else:
+        # TBF should an exit or an Exception be raised here? I guess the program should never go here right?
         return 1
 
 
@@ -196,7 +231,7 @@ def parallel_subwin_dist(args):
       #res=[start,stop,numpy.nan]
   #return(res)
 
-def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5000,windows_step=500,ksize=4,position=False):
+def sliding_windows_distances(seq, mcp_comparison, seq_id, dist="KL", windows_size=5000, windows_step=500, ksize=4, position=False):
     #seq=str(Bioseq_record.seq)
     ret=list()
     if(len(seq)<windows_size): #only enough to compute one window, no sliding,
@@ -210,7 +245,7 @@ def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5
                 ret.append(numpy.nan)
             else:
                 ret.append([seq_id,0,int(len(seq)),numpy.nan])
-    elif(len(seq)<minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry*windows_step): #not many windows in this contig, so better launching it in serial rather than in parallel
+    elif(len(seq)<min_nb_w_per_fasta_for_mul_cpu*windows_step): #not many windows in this contig, so better launching it in serial rather than in parallel
         tmp_out=list()
         if(position==False):
             for s in range(0,len(seq)-windows_size,windows_step):
@@ -287,100 +322,147 @@ def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5
 def get_cmd():
     """ read command line arguments
     """
-    Utilisation = "%prog [-i FILE] [options]"
-    parser = OptionParser(usage = Utilisation)
-    parser.add_option("-i","--assembly", dest = "genome", help = "multifasta of the genome assembly")
-    parser.add_option("-c","--conta", dest = "conta", help = "multifasta of the contaminant species training set")
-    parser.add_option("-r","--host", dest = "host", help = "optional multifasta of the host species training set")
-    parser.add_option("-n","--n_max_freq_in_windows", type = "float", dest = "n_max_freq_in_windows", default = "0.4", help = "maximum proportion of N tolerated in a window to compute the microcomposition anyway [0~1]. Too much 'N's will reduce the number of kmer counts and will artificially coarse the resolution of the frequencies. If your assembly contains many stretches of 'N's, consider rising this parameter and shortening the windows step in order to allow computation and signal in the output, it might cost you computational time though. Windows which do not meet this criteria will be affected a distance of 'nan'")
-    parser.add_option("-k","--lgMot", dest = "k", type = "int", default = 4, help = "word wise / kmer lenght / k [default:%default]")
-    parser.add_option("-w","--windows_size", dest ="windows_size", type = "int", help = "Sliding windows size (bp)[default:%default]")
-    parser.add_option("-t","--windows_step", dest ="windows_step", type = "int", help = "Sliding windows step size(bp)[default:%default]")
-    parser.add_option("-s","--strand", default = "double", help = "strand used to compute microcomposition. leading, lagging ou double [default:%default]")
-    parser.add_option("-d","--distance", dest = "dist", default = "JSD", help = "méthode de distance entre 2 signatures : KL: Kullback-Leibler, Eucl : Euclidienne[default:%default], JSD : Jensen-Shannon divergence")
-    parser.add_option("-u","--cpu", dest = "threads_max", type = "int", default = 4, help = "how maany threads to use for windows microcomposition computation[default:%default]")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--assembly", action="store", required=True, 
+                    dest="genome", help="multifasta of the genome assembly")
+    parser.add_argument("-c", "--conta", action="store", dest="conta", 
+                    help="multifasta of the contaminant species training set")
+    parser.add_argument("-r", "--host", action="store", dest="host", 
+                    help="optional host species training set in multifasta")
+    parser.add_argument("-n", "--n_max_freq_in_windows", action="store", 
+                    type=float, dest="n_max_freq_in_windows", default = 0.4,
+                    # TODO too long help,it's not here to replace a documentation
+                    help = "maximum proportion of N tolerated in a window to "
+                    " compute the microcomposition anyway [0~1]. "
+                    "Too much 'N's will reduce the number of kmer counts and "
+                    "will artificially coarse the frequency resolutions"
+                    "If your assembly contains many stretches of 'N's, "
+                    "consider rising this parameter and shortening the windows"
+                    " step in order to allow computation and signal in the "
+                    "output, it might cost you computational time though. "
+                    "Windows which do not meet this criteria will be affected "
+                    "a distance of 'nan'")
+    parser.add_argument("-k", "--lgMot", action="store", dest="k", type=int, 
+                default=4, help="word wise/ kmer lenght/ k [default:%(default)d]")
+    parser.add_argument("-w", "--windows_size", action="store", 
+                    dest="windows_size", type=int, 
+                    help="Sliding windows size (bp)")
+    parser.add_argument("-t", "--windows_step", action="store", 
+                    dest="windows_step", type=int, 
+                    help="Sliding windows step size(bp)")
+    parser.add_argument("-s", "--strand", action="store", default="double", 
+                    choices=["double", "leading", "lagging"],
+                    help="strand used to compute microcomposition. leading, "
+                    "lagging ou double [default:%(default)s]")
+    parser.add_argument("-d", "--distance", action="store", dest="dist", 
+                  default="JSD", help="distance method between two signatures:"
+                    " KL: Kullback-Leibler, "
+                    "Eucl : Euclidienne[default:%(default)s], "
+                    "JSD : Jensen-Shannon divergence")
+    parser.add_argument("-u", "--cpu", action="store", dest="threads_max", 
+                    type=int, default=4, 
+                    help="how maany threads to use for windows "
+                    "microcomposition computation[default:%(default)d]")
 
-    #parser.add_option("-q","--qqconque", action = "store_true", dest="afaire")
-
-    (options,argument) = parser.parse_args()
+    options = parser.parse_args()
 
     return options
 
 def main():
 
+    # get parameters
     options = get_cmd()
 
-    if(not options.genome):
-        parser.error("An input fasta file (-i ) is mandatory")
-        exit()
-
-    if(not options.conta):
-        if(not options.windows_size and not options.windows_step):
+    if (not options.conta):
+        whole_seq = Seq("")
+        for record in SeqIO.parse(options.genome, "fasta"):
+            # TBF: why add a N?
+            whole_seq.seq = str(whole_seq)+"N"+str(record.seq)
+        genome = numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k))
+        
+        if (not options.windows_size and not options.windows_step):
             #parser.error("An input fasta file (-i ) is mandatory")
-            print("A genome was provided but no training set to learn the contamination profile (-c). You didn't provide sliding window parameters (-w -t) so I will just compute the signature of the whole genome ")
-            whole_seq=Seq("")
-            for record in SeqIO.parse(options.genome, "fasta"):
-                whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-            genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k if options.k else 4))
+            print("Warning: A genome was provided but no training set to learn the contamination profile (-c). "
+                  "You didn't provide sliding window parameters (-w -t), "
+                  "the signature will be computed from the whole genome ", file=sys.stderr)
+            
             with open(str(os.path.basename(options.genome))+".microcomposition.mat", 'w') as outf:
                 outf.write(str(vector_to_matrix(genome)))
             
-        elif(options.windows_size or options.windows_step):
-            print("A genome was provided but no training set to learn the contamination profile (-c). You provided sliding window parameters (either -w -t) so I will compute the genome microcomposition signature and I will compute the distance of every window microcomposition to that of the whole genome ")
-            whole_seq=Seq("")
-            for record in SeqIO.parse(options.genome, "fasta"):
-                whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-            genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
-            
+        elif (options.windows_size or options.windows_step):
+            print("Warning: A genome was provided but no training set to learn the contamination profile (-c). "
+                  "You provided sliding window parameters (either -w -t), "
+                  "I will compute the genome microcomposition signature and "
+                  "I will compute the distance of every window microcomposition to that of the whole genome ", file=sys.stderr)           
             #frq_wins=list()
-            with open(str(os.path.basename(options.genome))+".mcp_windows_vs_whole_"+options.dist+".dist", 'w') as outf:
+            
+            path = str(os.path.basename(options.genome)) + ".mcp_windows_vs_whole_" + options.dist+".dist"
+            with open(path, 'w') as outf:
                 for record in SeqIO.parse(options.genome, "fasta"):
-                    windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=genome,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                    windows_distances = sliding_windows_distances(str(record.seq), seq_id=record.id, mcp_comparison=genome, 
+                                                                  position=True, dist=options.dist, 
+                                                                  windows_size=options.windows_size if options.windows_size else 5000, 
+                                                                  windows_step=options.windows_step if options.windows_step else 500, 
+                                                                  ksize=options.k)
                     for t in windows_distances:
                         outf.write(str("\t".join(map(str,t)))+"\n")
+        # TBF: else?
 
-    if(options.genome and options.conta):
-        print("A genome and a training set to learn the contamination profile was provided so I will compute the microcomposition signature of the genome (-i) or host training set if provided (-r), that of the contamination training set (-c) and those of the sliding windows along the assembly (-i). with all of that I will output the distances of the microcomposition of every windows compared to both microcompositions of the contaminant and the host genome.")
-        whole_seq=Seq("")
+    else: # TBF: equivalent no? genome is always here (required argument) and conta is present
+    #if(options.genome and options.conta):
+        print("A genome and a training set to learn the contamination profile was provided so "
+              "I will compute the microcomposition signature of the genome (-i) or host training set if provided (-r), "
+              "that of the contamination training set (-c) and those of the sliding windows along the assembly (-i). "
+              "with all of that I will output the distances of the microcomposition of every windows compared "
+              "to both microcompositions of the contaminant and the host genome.")
+        
+        fname = str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"
         if(options.host):
             print("using the provided host training set to learn the microcomposition")
-            target=options.host
+            target = options.host
+            fname = fname+ "host_"+str(os.path.basename(options.host))+"_"+options.dist+".dist"
         else:
             print("No host training set provided, I will use the whole genome to learn the microcomposition")
-            target=options.genome
+            target = options.genome
+            fname = fname+"wholegenome_"+options.dist+".dist"
+        #print(fname+" totot")
+            
         whole_seq=Seq("")
         for record in SeqIO.parse(target, "fasta"):
-            whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-        genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
+            whole_seq.seq = str(whole_seq)+"N"+str(record.seq)
+            
+        genome = numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k))
 
-        whole_conta=Seq("")
+        whole_conta = Seq("")
         for record in SeqIO.parse(options.conta, "fasta"):
             whole_conta.seq=str(whole_conta)+"N"+str(record.seq)
-        conta=numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k if options.k else 4))
-
-        fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"
-        if options.host:
-            fname=fname+ "host_"+str(os.path.basename(options.host))+"_"+options.dist+".dist"
-        else:
-            fname=fname+"wholegenome_"+options.dist+".dist"
             
-        #print(fname+" totot")
+        conta = numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k))
+  
         with open(fname, 'w') as outf:
             for record in SeqIO.parse(options.genome, "fasta"):
                 #f.write('>'+str(record.id)+"\n")
                 #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-                windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=genome,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                windows_distances = sliding_windows_distances(str(record.seq), seq_id=record.id, mcp_comparison=genome, 
+                                                              position=True, dist=options.dist, 
+                                                              windows_size=options.windows_size if options.windows_size else 5000, 
+                                                              windows_step=options.windows_step if options.windows_step else 500, 
+                                                              ksize=options.k)
                 #windows_distances=list()
                 for t in windows_distances:
                     outf.write(str("\t".join(map(str,t)))+"\n")
         
-        fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"+"conta_"+str(os.path.basename(options.conta))+"_"+options.dist+".dist"
+        fname = str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"+"conta_"+str(os.path.basename(options.conta))+"_"+options.dist+".dist"
         #print(fname+" totowdawdt")
         with open(fname, 'w') as outf:
             for record in SeqIO.parse(options.genome, "fasta"):
                 #f.write('>'+str(record.id)+"\n")
                 #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-                windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=conta,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                windows_distances = sliding_windows_distances(str(record.seq), seq_id=record.id, mcp_comparison=conta,
+                                                              position=True, dist=options.dist, 
+                                                              windows_size=options.windows_size if options.windows_size else 5000, 
+                                                              windows_step=options.windows_step if options.windows_step else 500, 
+                                                              ksize=options.k if options.k else 4)
                 #windows_distances=list()
                 for t in windows_distances:
                     outf.write(str("\t".join(map(str,t)))+"\n")
