@@ -121,6 +121,7 @@ def frequency (seq,ksize=4,strand="both"):
   word_count=sum(c.values())
   if(word_count > 0):
     ret=list()
+    if
     for w in word_order:
       if(c.get(w) != None):
         ret.append(c.get(w)/word_count)
@@ -133,7 +134,7 @@ def frequency (seq,ksize=4,strand="both"):
 
 def parallel_subwin_dist(args):
   res=list()
-  for window,start,stop,seq_id,mcp_comparison,windows_size,windows_step,ksize,dist,position,contig_size in args:
+  for window,start,stop,seq_id,mcp_comparison,windows_size,windows_step,ksize,dist,position,contig_size,strand in args:
     #print(window,start,stop,mcp_comparison,windows_size,windows_step,ksize,dist,position)
     #to avoid border effects being a problem in the code, we use only the simple formula start+windows_size/2 (+/-) windows_step/2 to find the significant center part of the windows. when several windows overlap, this centered part, long as the windows step is the most representative of the windows, not representing as much other part of this window that are overlapped by other windows. BUT: this simple formula has border effects, so we manually correct the start of the first window and the stop of the last window to match the contig borders.
     if(start == (windows_size/2-windows_step/2)):
@@ -146,9 +147,9 @@ def parallel_subwin_dist(args):
       displayed_stop=stop
     if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
       if(position==False):
-        res.append(globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize))))
+        res.append(globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize,strand=strand))))
       else:
-        res.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize)))])
+        res.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize,strand=strand)))])
     else:
       if(position==False):
         res.append(numpy.nan)
@@ -172,15 +173,15 @@ def parallel_subwin_dist(args):
       #res=[start,stop,numpy.nan]
   #return(res)
 
-def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5000,windows_step=500,ksize=4,position=False):
+def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5000,windows_step=500,ksize=4,position=False,strand="both"):
   #seq=str(Bioseq_record.seq)
   ret=list()
   if(len(seq)<windows_size): #only enough to compute one window, no sliding,
     if((seq.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
       if(position==False):
-        ret.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=seq,ksize=ksize))))
+        ret.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=seq,ksize=ksize,strand=strand))))
       else:
-        ret.append([seq_id,0,int(len(seq)),globals()[dist](mcp_comparison,frequency(seq=seq,ksize=ksize))])
+        ret.append([seq_id,0,int(len(seq)),globals()[dist](mcp_comparison,frequency(seq=seq,ksize=ksize,strand=strand))])
     else:
       if(position==False):
         ret.append(numpy.nan)
@@ -192,7 +193,7 @@ def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5
       for s in range(0,len(seq)-windows_size,windows_step):
         window=seq[s:s+windows_size]
         if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-          tmp_out.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize))))
+          tmp_out.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize,strand=strand))))
         else:
           tmp_out.append(numpy.nan)
     else:
@@ -209,16 +210,16 @@ def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5
 
         window=seq[s:s+windows_size]
         if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-          tmp_out.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,frequency(seq=window,ksize=ksize))])
+          tmp_out.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,frequency(seq=window,ksize=ksize,strand=strand))])
         else:
           tmp_out.append([seq_id,displayed_start,displayed_stop,numpy.nan])
     for i in tmp_out:
       ret.append(i)
   else:
-    args = [(seq[s:s+windows_size],int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2),seq_id,mcp_comparison,windows_size, windows_step, ksize,dist, position,len(seq)) for s in range(0,len(seq)-windows_size,windows_step)]
-    parallel_args_set=chunkitize(args,options.threads_max) 
-    pool= multiprocessing.Pool(processes=options.threads_max)
-    res=pool.map(parallel_subwin_dist, parallel_args_set)
+    args = [(seq[s:s+windows_size],int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2),seq_id,mcp_comparison,windows_size, windows_step, ksize,dist, position,len(seq),strand) for s in range(0,len(seq)-windows_size,windows_step)]
+    parallel_args_set = chunkitize(args,options.threads_max) 
+    pool = multiprocessing.Pool(processes=options.threads_max)
+    res = pool.map(parallel_subwin_dist, parallel_args_set)
     pool.close()
     pool.join()
     for i in res:
@@ -272,9 +273,9 @@ if __name__ == "__main__":
   parser.add_option("-k","--lgMot", dest = "k", type = "int", default = 4, help = "word wise / kmer lenght / k [default:%default]")
   parser.add_option("-w","--windows_size", dest ="windows_size", type = "int", help = "Sliding windows size (bp)[default:%default]")
   parser.add_option("-t","--windows_step", dest ="windows_step", type = "int", help = "Sliding windows step size(bp)[default:%default]")
-  parser.add_option("-s","--strand", default = "double", help = "strand used to compute microcomposition. leading, lagging ou double [default:%default]")
+  parser.add_option("-s","--strand",dest ="strand" default = "both", help = "strand used to compute microcomposition. leading, lagging ou both [default:%default]")
   parser.add_option("-d","--distance", dest = "dist", default = "JSD", help = "méthode de distance entre 2 signatures : KL: Kullback-Leibler, Eucl : Euclidienne[default:%default], JSD : Jensen-Shannon divergence")
-  parser.add_option("-u","--cpu", dest = "threads_max", type = "int", default = 4, help = "how maany threads to use for windows microcomposition computation[default:%default]")
+  parser.add_option("-u","--cpu", dest = "threads_max", type = "int", default = 4, help = "how many threads to use for windows microcomposition computation[default:%default]")
 
   #parser.add_option("-q","--qqconque", action = "store_true", dest="afaire")
 
@@ -294,7 +295,7 @@ if __name__ == "__main__":
       whole_seq=Seq("")
       for record in SeqIO.parse(options.genome, "fasta"):
         whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-      genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k if options.k else 4))
+      genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k if options.k else 4,strand=options.strand))
       f = open(str(os.path.basename(options.genome))+".microcomposition.mat", 'w')
       f.write(str(vector_to_matrix(genome)))
       f.close()
@@ -306,7 +307,7 @@ if __name__ == "__main__":
       whole_seq=Seq("")
       for record in SeqIO.parse(options.genome, "fasta"):
         whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-      genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
+      genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4,strand=options.strand))
       
       #frq_wins=list()
       f = open(str(os.path.basename(options.genome))+".mcp_windows_vs_whole_"+options.dist+".dist", 'w')
@@ -328,12 +329,12 @@ if __name__ == "__main__":
     whole_seq=Seq("")
     for record in SeqIO.parse(target, "fasta"):
       whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-    genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
+    genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4,strand=options.strand))
 
     whole_conta=Seq("")
     for record in SeqIO.parse(options.conta, "fasta"):
       whole_conta.seq=str(whole_conta)+"N"+str(record.seq)
-    conta=numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k if options.k else 4))
+    conta=numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k if options.k else 4,strand=options.strand))
 
     fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"
     if options.host:
