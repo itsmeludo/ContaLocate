@@ -24,9 +24,9 @@ contalocate.R -i genome.fasta -c genome_conta_1.fa -m
 ```
 
 Parameters:
-* -i    --genome            File from fastq-stats -x (required)
+* -i    --genome            Multifasta of the genome assembly (required)
 * -r    --host_learn        Host training set (optional)
-* -c    --conta_learn       Contaminant training set (optional, but recommended^^) if missing and sliding window parameters are given, the sliding windows composition will be compared to the whole genome composition to contrast potential HGT (prokaryotes and simple eukaryotes only)
+* -c    --conta_learn       Contaminant training set (optional, but recommended^^) if missing and sliding window parameters are given, the sliding windows composition will be compared to the whole genome composition to contrast potential HGTs (prokaryotes and simple eukaryotes only)
 * -t    --win_step          Step of the sliding windows analysis to locate the contaminant (optional) default: 500bp or 100bp
 * -w    --win_size          Length of the sliding window to locate the contaminant (optional) default: 5000bp 
 * -d    --dist              Divergence metric used to compare profiles: (KL), JSD or Eucl
@@ -41,7 +41,8 @@ Install
 -------
 
 * Dependencies:
-    * [BioPython](biopython.org)
+    * Python 3.x
+        * [BioPython](biopython.org)
         * [Numpy](numpy.org)
         * [Cython](http://cython.org/)
     * R 3.x
@@ -53,6 +54,7 @@ Install
 
 In the Bash/Shell, as root/admin if wanted installed globally.
 ```Bash
+#Ubuntu/Debian-based
 apt-get install python3-dev python3-setuptools r-base
 easy_install3 -U setuptools
 pip3 install biopython 
