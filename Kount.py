@@ -1,52 +1,50 @@
 #!/usr/bin/env python3
-
-### Author: Ludovic V. Mallet, PhD
-### 2016.03.22
-### licence: GPLv3
-### Version: Alpha.1
-### Garanteed with misatkes. <- Including this one.
-
-
-# This program computes oligonucleotide profiles (microcomposition) for sequences given as arguments.
-# Depending on the set of parameters used, the program guess what is possible to do and will perform accordingly. Use the proper (and minimal) parameter set you need to achieve what you want.
-# Luckily, the program will tell you what it does, and how you can change its behaviour by providing him with supplementary parameters.
-# See the help by calling the program without any argument.
+"""
+This program computes oligonucleotide profiles (microcomposition) for sequences given as arguments.
+Depending on the set of parameters used, the program guess what is possible to do and will perform accordingly. Use the proper (and minimal) parameter set you need to achieve what you want.
+Luckily, the program will tell you what it does, and how you can change its behaviour by providing him with supplementary parameters.
+See the help by calling the program without any argument.
 
 
-#dependencies: 
-  #Biopython
-  #numpy
-  #cython
+dependencies: 
+  Biopython
+  numpy
+  cython
 
-#as root/admin if wanted installed globally
-#aptitude/yum install python3-dev python3-setuptools
-
-
-#easy_install -U setuptools
-#easy_install3 -U setuptools
-
-#pip install biopython
-#pip3 install biopython 
-
-#pip install cython
-#pip3 install cython
-
-#pip install numpy
-#pip3 install numpy
+as root/admin if wanted installed globally
+aptitude/yum install python3-dev python3-setuptools
 
 
+easy_install -U setuptools
+easy_install3 -U setuptools
+
+pip install biopython
+pip3 install biopython 
+
+pip install cython
+pip3 install cython
+
+pip install numpy
+pip3 install numpy
+"""
+
+__author__ = "Ludovic V. Mallet, PhD"
+__copyright__ = ""
+__date__ = "2016.03.22"
+__licence__ = "GPLv3"
+__version__ = "0.1"
+__status__ = "alpha"
+__email__ = ""
 
 from optparse import OptionParser
-import os
-import re
-import math
-import numpy
+import os, re, math
+from collections import Counter
+import multiprocessing
 
+import numpy
 from Bio import SeqIO
 from Bio.Seq import Seq
 
-from collections import Counter
-import multiprocessing
 
 numpy.seterr(divide='ignore', invalid='ignore')
 minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry=20
@@ -54,37 +52,43 @@ word_order =( "CCCC", "GCCC", "CGCC", "GGCC", "CCGC", "GCGC", "CGGC", "GGGC", "C
 
 
 def KL(a,b):
-  #with numpy.errstate(invalid='ignore'):
-  d = a * numpy.log(a/b)
-  d[numpy.isnan(d)]=0 
-  d[numpy.isinf(d)]=0
-  return (numpy.sum(d))*10000
+    """ KL measure 
+    """
+    #with numpy.errstate(invalid='ignore'):
+    d = a * numpy.log(a/b)
+    d[numpy.isnan(d)]=0 
+    d[numpy.isinf(d)]=0
+    return (numpy.sum(d))*10000
 
 def Eucl(a,b):
-  #with numpy.errstate(invalid='ignore'):
-  d = pow(a-b,2)
-  d[numpy.isnan(d)]=0
-  d[numpy.isinf(d)]=0
-  return numpy.sqrt(numpy.sum(d))*10000
+    """ Euclidean distance between two vectors 
+    """
+    #with numpy.errstate(invalid='ignore'):
+    d = pow(a-b,2)
+    d[numpy.isnan(d)]=0
+    d[numpy.isinf(d)]=0
+    return numpy.sqrt(numpy.sum(d))*10000
 
 def JSD(a,b):
-  #with numpy.errstate(invalid='ignore'):
-  h = (a + b)/2
-  d = (KL(a,h)/2)+(KL(b,h)/2)
-  return d
+    """ JSD distance
+    """
+    #with numpy.errstate(invalid='ignore'):
+    h = (a + b)/2
+    d = (KL(a,h)/2)+(KL(b,h)/2)
+    return d
     
    
 def vector_to_matrix(profile):
-  return list((zip(*(iter(profile),)*int(math.sqrt(len(profile))))))
+    return list((zip(*(iter(profile),)*int(math.sqrt(len(profile))))))
   
   
   
 def chunkitize(liste, chunks):
-  out=list()
-  chunk_size= int((len(liste) / float(chunks)))
-  for i in range(0,chunks):
-    out.append(liste[chunk_size*i:(chunk_size*i+chunk_size)if(i!=chunks-1)else len(liste)])
-  return out
+    out=list()
+    chunk_size= int((len(liste) / float(chunks)))
+    for i in range(0,chunks):
+        out.append(liste[chunk_size*i:(chunk_size*i+chunk_size)if(i!=chunks-1)else len(liste)])
+    return out
 
 #chunkitize([1, 2, 3, 4, 5], 2)
 
@@ -92,69 +96,89 @@ def chunkitize(liste, chunks):
 
 
 def select_strand (seq,strand="both"):
-  Bioseq_record=Seq(seq)
-  if(strand =="both"):
-    return str(str(seq)+str(Bioseq_record.reverse_complement())).upper()
-  elif(strand == "minus"):
-    return str(Bioseq_record.reverse_complement()).upper()
-  elif(strand == "plus"):
-    return str(seq).upper()
-  else:
-    return 1
+    Bioseq_record=Seq(seq)
+    if(strand =="both"):
+        return str(str(seq)+str(Bioseq_record.reverse_complement())).upper()
+    elif(strand == "minus"):
+        return str(Bioseq_record.reverse_complement()).upper()
+    elif(strand == "plus"):
+        return str(seq).upper()
+    else:
+        return 1
    
    
 def frequency (seq,ksize=4,strand="both"):
-  seq=select_strand(seq,strand)
-  seq_words=list()
-  d=dict()
-  for s in re.split('[^ACGTacgt]+',seq): #excludes what is not a known characterised nucleotide 
-    seq_letters=list(s)
-    ##print(len(s))
-    if (len(seq_letters) >=ksize):
-      # launch k-1 times the word generation with 1 nucleotide shift every iteration to have overlapping words.
-      for i in range(ksize-1):
-        #generate words from seq_letters
-        words=list((zip(*(iter(seq_letters),)*ksize)))
-        seq_words.extend(list(map(''.join,words))) # adds the words for this subsequence and frame to the total list of words
-        seq_letters.pop(0) # shift one to compute overlapping words at the next iteration
-  c = Counter(seq_words)
-  word_count=sum(c.values())
-  if(word_count > 0):
-    ret=list()
-    for w in word_order:
-      if(c.get(w) != None):
-        ret.append(c.get(w)/word_count)
-      else:
-        ret.append(0)
-    return ret
-  else:
-    return 1
+    """ TODO add description
+    """
+    seq=select_strand(seq,strand)
+    seq_words=list()
+    d=dict()
+    #excludes what is not a known characterised nucleotide 
+    for s in re.split('[^ACGTacgt]+',seq): 
+        seq_letters=list(s)
+        ##print(len(s))
+        if (len(seq_letters) >=ksize):
+            # launch k-1 times the word generation with 1 nucleotide shift
+            # every iteration to have overlapping words.
+            for i in range(ksize-1):
+                #generate words from seq_letters
+                words=list((zip(*(iter(seq_letters),)*ksize)))
+                # adds the words for this subsequence and 
+                # frame to the total list of words
+                seq_words.extend(list(map(''.join,words))) 
+                # shift one to compute overlapping words at the next iteration
+                seq_letters.pop(0) 
+    c = Counter(seq_words)
+    word_count=sum(c.values())
+    if(word_count > 0):
+        ret=list()
+        for w in word_order:
+            if(c.get(w) != None):
+                ret.append(c.get(w)/word_count)
+            else:
+                ret.append(0)
+        return ret
+    else:
+        return 1
 
 
 def parallel_subwin_dist(args):
-  res=list()
-  for window,start,stop,seq_id,mcp_comparison,windows_size,windows_step,ksize,dist,position,contig_size in args:
-    #print(window,start,stop,mcp_comparison,windows_size,windows_step,ksize,dist,position)
-    #to avoid border effects being a problem in the code, we use only the simple formula start+windows_size/2 (+/-) windows_step/2 to find the significant center part of the windows. when several windows overlap, this centered part, long as the windows step is the most representative of the windows, not representing as much other part of this window that are overlapped by other windows. BUT: this simple formula has border effects, so we manually correct the start of the first window and the stop of the last window to match the contig borders.
-    if(start == (windows_size/2-windows_step/2)):
-      displayed_start=1
-    else:
-       displayed_start=start
-    if(stop-windows_step/2+windows_size/2>=contig_size-windows_step and stop-windows_step/2+windows_size/2<=contig_size):
-      displayed_stop=contig_size
-    else:
-      displayed_stop=stop
-    if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-      if(position==False):
-        res.append(globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize))))
-      else:
-        res.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize)))])
-    else:
-      if(position==False):
-        res.append(numpy.nan)
-      else:
-        res.append([seq_id,displayed_start,displayed_stop,numpy.nan])
-  return(res)
+    res=list()
+    for window,start,stop,seq_id,mcp_comparison,windows_size,windows_step,ksize,dist,position,contig_size in args:
+        #print(window,start,stop,mcp_comparison,windows_size,windows_step,ksize,dist,position)
+        #to avoid border effects being a problem in the code, 
+        # we use only the simple formula start+windows_size/2 (+/-) windows_step/2 
+        # to find the significant center part of the windows. 
+        # when several windows overlap, this centered part, 
+        # long as the windows step is the most representative of the windows, 
+        # not representing as much other part of this window that are 
+        # overlapped by other windows. 
+        # BUT: this simple formula has border effects, 
+        # so we manually correct the start of the first window and
+        # the stop of the last window to match the contig borders.
+        if(start == (windows_size/2-windows_step/2)):
+            displayed_start=1
+        else:
+             displayed_start=start
+        if (stop-windows_step/2+windows_size/2>=contig_size-windows_step and 
+                stop-windows_step/2+windows_size/2<=contig_size):
+            displayed_stop=contig_size
+        else:
+            displayed_stop=stop
+        if ((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
+            if (position==False):
+                res.append(globals()[dist](mcp_comparison,
+                        numpy.array(frequency(seq=window,ksize=ksize))))
+            else:
+                res.append([seq_id,displayed_start,displayed_stop,
+                        globals()[dist](mcp_comparison, 
+                            numpy.array(frequency(seq=window,ksize=ksize)))])
+        else:
+            if(position==False):
+                res.append(numpy.nan)
+            else:
+                res.append([seq_id,displayed_start,displayed_stop,numpy.nan])
+    return(res)
 
 #def subwin_dist(args):
   #window,start,stop,mcp_comparison,windows_size,windows_step,ksize,dist,position = args
