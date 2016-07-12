@@ -37,7 +37,7 @@ __status__ = "alpha"
 __email__ = ""
 
 from optparse import OptionParser
-import os, re, math
+import os, re, math, sys
 from collections import Counter
 import multiprocessing
 
@@ -197,194 +197,195 @@ def parallel_subwin_dist(args):
   #return(res)
 
 def sliding_windows_distances(seq,mcp_comparison,seq_id,dist="KL",windows_size=5000,windows_step=500,ksize=4,position=False):
-  #seq=str(Bioseq_record.seq)
-  ret=list()
-  if(len(seq)<windows_size): #only enough to compute one window, no sliding,
-    if((seq.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-      if(position==False):
-        ret.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=seq,ksize=ksize))))
-      else:
-        ret.append([seq_id,0,int(len(seq)),globals()[dist](mcp_comparison,frequency(seq=seq,ksize=ksize))])
-    else:
-      if(position==False):
-        ret.append(numpy.nan)
-      else:
-        ret.append([seq_id,0,int(len(seq)),numpy.nan])
-  elif(len(seq)<minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry*windows_step): #not many windows in this contig, so better launching it in serial rather than in parallel
-    tmp_out=list()
-    if(position==False):
-      for s in range(0,len(seq)-windows_size,windows_step):
-        window=seq[s:s+windows_size]
-        if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-          tmp_out.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize))))
+    #seq=str(Bioseq_record.seq)
+    ret=list()
+    if(len(seq)<windows_size): #only enough to compute one window, no sliding,
+        if((seq.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
+            if(position==False):
+                ret.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=seq,ksize=ksize))))
+            else:
+                ret.append([seq_id,0,int(len(seq)),globals()[dist](mcp_comparison,frequency(seq=seq,ksize=ksize))])
         else:
-          tmp_out.append(numpy.nan)
-    else:
-      for s in range(0,len(seq)-windows_size,windows_step):
-        if(s==0):# to avoid border effects being a problem in the code, we use only the simple formula start+windows_size/2 (+/-) windows_step/2 to find the significant center part of the windows. when several windows overlap, this centered part, long as the windows step is the most representative of the windows, not representing as much other part of this window that are overlapped by other windows. BUT: this simple formula has border effects, so we manually correct the start of the first window and the stop of the last window to match the contig borders.
-          displayed_start=1
+            if(position==False):
+                ret.append(numpy.nan)
+            else:
+                ret.append([seq_id,0,int(len(seq)),numpy.nan])
+    elif(len(seq)<minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry*windows_step): #not many windows in this contig, so better launching it in serial rather than in parallel
+        tmp_out=list()
+        if(position==False):
+            for s in range(0,len(seq)-windows_size,windows_step):
+                window=seq[s:s+windows_size]
+                if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
+                    tmp_out.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize))))
+                else:
+                    tmp_out.append(numpy.nan)
         else:
-          displayed_start=int(s+windows_size/2-windows_step/2)
+            for s in range(0,len(seq)-windows_size,windows_step):
+                if(s==0):# to avoid border effects being a problem in the code, we use only the simple formula start+windows_size/2 (+/-) windows_step/2 to find the significant center part of the windows. when several windows overlap, this centered part, long as the windows step is the most representative of the windows, not representing as much other part of this window that are overlapped by other windows. BUT: this simple formula has border effects, so we manually correct the start of the first window and the stop of the last window to match the contig borders.
+                    displayed_start=1
+                else:
+                    displayed_start=int(s+windows_size/2-windows_step/2)
 
-        if(s==len(seq)-windows_size):
-          displayed_stop=len(seq)
-        else:
-          displayed_stop=int(s+windows_size/2+windows_step/2)
+                if(s==len(seq)-windows_size):
+                    displayed_stop=len(seq)
+                else:
+                    displayed_stop=int(s+windows_size/2+windows_step/2)
 
-        window=seq[s:s+windows_size]
-        if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-          tmp_out.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,frequency(seq=window,ksize=ksize))])
-        else:
-          tmp_out.append([seq_id,displayed_start,displayed_stop,numpy.nan])
-    for i in tmp_out:
-      ret.append(i)
-  else:
-    args = [(seq[s:s+windows_size],int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2),seq_id,mcp_comparison,windows_size, windows_step, ksize,dist, position,len(seq)) for s in range(0,len(seq)-windows_size,windows_step)]
-    parallel_args_set=chunkitize(args,options.threads_max) 
-    pool= multiprocessing.Pool(processes=options.threads_max)
-    res=pool.map(parallel_subwin_dist, parallel_args_set)
-    pool.close()
-    pool.join()
-    for i in res:
-      for g in i:
-        ret.append(g)
-  return ret
+                window=seq[s:s+windows_size]
+                if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
+                    tmp_out.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,frequency(seq=window,ksize=ksize))])
+                else:
+                    tmp_out.append([seq_id,displayed_start,displayed_stop,numpy.nan])
+        for i in tmp_out:
+            ret.append(i)
+    else:
+        args = [(seq[s:s+windows_size],int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2),seq_id,mcp_comparison,windows_size, windows_step, ksize,dist, position,len(seq)) for s in range(0,len(seq)-windows_size,windows_step)]
+        parallel_args_set=chunkitize(args,options.threads_max) 
+        pool= multiprocessing.Pool(processes=options.threads_max)
+        res=pool.map(parallel_subwin_dist, parallel_args_set)
+        pool.close()
+        pool.join()
+        for i in res:
+            for g in i:
+                ret.append(g)
+    return ret
 
 #def subwin_feq(window,windows_size=5000,windows_step=500,ksize=4):
-  #if((window.count('N')/windows_size)>= options.n_max_freq_in_windows):
-    #q.put(numpy.array(numpy.nan))
-  #else:
-    #q.put(numpy.array(frequency(seq=window,ksize=ksize)))
+    #if((window.count('N')/windows_size)>= options.n_max_freq_in_windows):
+        #q.put(numpy.array(numpy.nan))
+    #else:
+        #q.put(numpy.array(frequency(seq=window,ksize=ksize)))
 
 #def sliding_windows_frequencies(seq,windows_size=5000,windows_step=500,ksize=4,position=False):
-  ##seq=str(Bioseq_record.seq)
-  #if(len(seq)<windows_size): #only enough to compute one window, no sliding,
-    #return numpy.array(frequency(seq=seq,ksize=ksize))
-  #else:
-    #ret = list()
-    #q = Queue()
-    #with concurrent.futures.ThreadPoolExecutor(max_workers=options.threads_max) as executor:
-      #for s in range(0,len(seq)-windows_size,windows_step):
-        ##print(s,s+windows_size)
-        #window=seq[s:s+windows_size]
-        #executor.submit(subwin_feq, window,windows_size,windows_step,ksize)
-    #while not q.empty():
-      #ret.append(q.get())
-    #return ret
+    ##seq=str(Bioseq_record.seq)
+    #if(len(seq)<windows_size): #only enough to compute one window, no sliding,
+        #return numpy.array(frequency(seq=seq,ksize=ksize))
+    #else:
+        #ret = list()
+        #q = Queue()
+        #with concurrent.futures.ThreadPoolExecutor(max_workers=options.threads_max) as executor:
+            #for s in range(0,len(seq)-windows_size,windows_step):
+                ##print(s,s+windows_size)
+                #window=seq[s:s+windows_size]
+                #executor.submit(subwin_feq, window,windows_size,windows_step,ksize)
+        #while not q.empty():
+            #ret.append(q.get())
+        #return ret
 
 #def sliding_windows_target_regions(seq, windows_size=5000, windows_step=500):
-  ##seq=str(Bioseq_record.seq)
-  #if(len(seq)<windows_size): #only enough to compute one window, no sliding,
-    #return list(0,len(seq))
-  #else:
-    #ret=list()
-    #for s in range(0,len(seq)-windows_size,windows_step):
-      ##print(s,s+windows_size)
-      #window=[int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2)]
-      #ret.append(window)
-  #return ret
+    ##seq=str(Bioseq_record.seq)
+    #if(len(seq)<windows_size): #only enough to compute one window, no sliding,
+        #return list(0,len(seq))
+    #else:
+        #ret=list()
+        #for s in range(0,len(seq)-windows_size,windows_step):
+            ##print(s,s+windows_size)
+            #window=[int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2)]
+            #ret.append(window)
+    #return ret
 
+def get_cmd():
+    """ read command line arguments
+    """
+    Utilisation = "%prog [-i FILE] [options]"
+    parser = OptionParser(usage = Utilisation)
+    parser.add_option("-i","--assembly", dest = "genome", help = "multifasta of the genome assembly")
+    parser.add_option("-c","--conta", dest = "conta", help = "multifasta of the contaminant species training set")
+    parser.add_option("-r","--host", dest = "host", help = "optional multifasta of the host species training set")
+    parser.add_option("-n","--n_max_freq_in_windows", type = "float", dest = "n_max_freq_in_windows", default = "0.4", help = "maximum proportion of N tolerated in a window to compute the microcomposition anyway [0~1]. Too much 'N's will reduce the number of kmer counts and will artificially coarse the resolution of the frequencies. If your assembly contains many stretches of 'N's, consider rising this parameter and shortening the windows step in order to allow computation and signal in the output, it might cost you computational time though. Windows which do not meet this criteria will be affected a distance of 'nan'")
+    parser.add_option("-k","--lgMot", dest = "k", type = "int", default = 4, help = "word wise / kmer lenght / k [default:%default]")
+    parser.add_option("-w","--windows_size", dest ="windows_size", type = "int", help = "Sliding windows size (bp)[default:%default]")
+    parser.add_option("-t","--windows_step", dest ="windows_step", type = "int", help = "Sliding windows step size(bp)[default:%default]")
+    parser.add_option("-s","--strand", default = "double", help = "strand used to compute microcomposition. leading, lagging ou double [default:%default]")
+    parser.add_option("-d","--distance", dest = "dist", default = "JSD", help = "méthode de distance entre 2 signatures : KL: Kullback-Leibler, Eucl : Euclidienne[default:%default], JSD : Jensen-Shannon divergence")
+    parser.add_option("-u","--cpu", dest = "threads_max", type = "int", default = 4, help = "how maany threads to use for windows microcomposition computation[default:%default]")
+
+    #parser.add_option("-q","--qqconque", action = "store_true", dest="afaire")
+
+    (options,argument) = parser.parse_args()
+
+    return options
+
+def main():
+
+    options = get_cmd()
+
+    if(not options.genome):
+        parser.error("An input fasta file (-i ) is mandatory")
+        exit()
+
+    if(not options.conta):
+        if(not options.windows_size and not options.windows_step):
+            #parser.error("An input fasta file (-i ) is mandatory")
+            print("A genome was provided but no training set to learn the contamination profile (-c). You didn't provide sliding window parameters (-w -t) so I will just compute the signature of the whole genome ")
+            whole_seq=Seq("")
+            for record in SeqIO.parse(options.genome, "fasta"):
+                whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
+            genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k if options.k else 4))
+            with open(str(os.path.basename(options.genome))+".microcomposition.mat", 'w') as outf:
+                outf.write(str(vector_to_matrix(genome)))
+            
+        elif(options.windows_size or options.windows_step):
+            print("A genome was provided but no training set to learn the contamination profile (-c). You provided sliding window parameters (either -w -t) so I will compute the genome microcomposition signature and I will compute the distance of every window microcomposition to that of the whole genome ")
+            whole_seq=Seq("")
+            for record in SeqIO.parse(options.genome, "fasta"):
+                whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
+            genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
+            
+            #frq_wins=list()
+            with open(str(os.path.basename(options.genome))+".mcp_windows_vs_whole_"+options.dist+".dist", 'w') as outf:
+                for record in SeqIO.parse(options.genome, "fasta"):
+                    windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=genome,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                    for t in windows_distances:
+                        outf.write(str("\t".join(map(str,t)))+"\n")
+
+    if(options.genome and options.conta):
+        print("A genome and a training set to learn the contamination profile was provided so I will compute the microcomposition signature of the genome (-i) or host training set if provided (-r), that of the contamination training set (-c) and those of the sliding windows along the assembly (-i). with all of that I will output the distances of the microcomposition of every windows compared to both microcompositions of the contaminant and the host genome.")
+        whole_seq=Seq("")
+        if(options.host):
+            print("using the provided host training set to learn the microcomposition")
+            target=options.host
+        else:
+            print("No host training set provided, I will use the whole genome to learn the microcomposition")
+            target=options.genome
+        whole_seq=Seq("")
+        for record in SeqIO.parse(target, "fasta"):
+            whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
+        genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
+
+        whole_conta=Seq("")
+        for record in SeqIO.parse(options.conta, "fasta"):
+            whole_conta.seq=str(whole_conta)+"N"+str(record.seq)
+        conta=numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k if options.k else 4))
+
+        fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"
+        if options.host:
+            fname=fname+ "host_"+str(os.path.basename(options.host))+"_"+options.dist+".dist"
+        else:
+            fname=fname+"wholegenome_"+options.dist+".dist"
+            
+        #print(fname+" totot")
+        with open(fname, 'w') as outf:
+            for record in SeqIO.parse(options.genome, "fasta"):
+                #f.write('>'+str(record.id)+"\n")
+                #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=genome,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                #windows_distances=list()
+                for t in windows_distances:
+                    outf.write(str("\t".join(map(str,t)))+"\n")
+        
+        fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"+"conta_"+str(os.path.basename(options.conta))+"_"+options.dist+".dist"
+        #print(fname+" totowdawdt")
+        with open(fname, 'w') as outf:
+            for record in SeqIO.parse(options.genome, "fasta"):
+                #f.write('>'+str(record.id)+"\n")
+                #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=conta,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
+                #windows_distances=list()
+                for t in windows_distances:
+                    outf.write(str("\t".join(map(str,t)))+"\n")
+
+    sys.exit(0)
 
 if __name__ == "__main__":
-
-  Utilisation = "%prog [-i FILE] [options]"
-  parser = OptionParser(usage = Utilisation)
-  parser.add_option("-i","--assembly", dest = "genome", help = "multifasta of the genome assembly")
-  parser.add_option("-c","--conta", dest = "conta", help = "multifasta of the contaminant species training set")
-  parser.add_option("-r","--host", dest = "host", help = "optional multifasta of the host species training set")
-  parser.add_option("-n","--n_max_freq_in_windows", type = "float", dest = "n_max_freq_in_windows", default = "0.4", help = "maximum proportion of N tolerated in a window to compute the microcomposition anyway [0~1]. Too much 'N's will reduce the number of kmer counts and will artificially coarse the resolution of the frequencies. If your assembly contains many stretches of 'N's, consider rising this parameter and shortening the windows step in order to allow computation and signal in the output, it might cost you computational time though. Windows which do not meet this criteria will be affected a distance of 'nan'")
-  parser.add_option("-k","--lgMot", dest = "k", type = "int", default = 4, help = "word wise / kmer lenght / k [default:%default]")
-  parser.add_option("-w","--windows_size", dest ="windows_size", type = "int", help = "Sliding windows size (bp)[default:%default]")
-  parser.add_option("-t","--windows_step", dest ="windows_step", type = "int", help = "Sliding windows step size(bp)[default:%default]")
-  parser.add_option("-s","--strand", default = "double", help = "strand used to compute microcomposition. leading, lagging ou double [default:%default]")
-  parser.add_option("-d","--distance", dest = "dist", default = "JSD", help = "méthode de distance entre 2 signatures : KL: Kullback-Leibler, Eucl : Euclidienne[default:%default], JSD : Jensen-Shannon divergence")
-  parser.add_option("-u","--cpu", dest = "threads_max", type = "int", default = 4, help = "how maany threads to use for windows microcomposition computation[default:%default]")
-
-  #parser.add_option("-q","--qqconque", action = "store_true", dest="afaire")
-
-  (options,argument) = parser.parse_args()
-
-
-
-
-  if(not options.genome):
-    parser.error("An input fasta file (-i ) is mandatory")
-    exit()
-
-  if(not options.conta):
-    if(not options.windows_size and not options.windows_step):
-      #parser.error("An input fasta file (-i ) is mandatory")
-      print("A genome was provided but no training set to learn the contamination profile (-c). You didn't provide sliding window parameters (-w -t) so I will just compute the signature of the whole genome ")
-      whole_seq=Seq("")
-      for record in SeqIO.parse(options.genome, "fasta"):
-        whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-      genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k if options.k else 4))
-      f = open(str(os.path.basename(options.genome))+".microcomposition.mat", 'w')
-      f.write(str(vector_to_matrix(genome)))
-      f.close()
-      
-      
-      
-    elif(options.windows_size or options.windows_step):
-      print("A genome was provided but no training set to learn the contamination profile (-c). You provided sliding window parameters (either -w -t) so I will compute the genome microcomposition signature and I will compute the distance of every window microcomposition to that of the whole genome ")
-      whole_seq=Seq("")
-      for record in SeqIO.parse(options.genome, "fasta"):
-        whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-      genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
-      
-      #frq_wins=list()
-      f = open(str(os.path.basename(options.genome))+".mcp_windows_vs_whole_"+options.dist+".dist", 'w')
-      for record in SeqIO.parse(options.genome, "fasta"):
-        windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=genome,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-        for t in windows_distances:
-          f.write(str("\t".join(map(str,t)))+"\n")
-      f.close()
-
-  if(options.genome and options.conta):
-    print("A genome and a training set to learn the contamination profile was provided so I will compute the microcomposition signature of the genome (-i) or host training set if provided (-r), that of the contamination training set (-c) and those of the sliding windows along the assembly (-i). with all of that I will output the distances of the microcomposition of every windows compared to both microcompositions of the contaminant and the host genome.")
-    whole_seq=Seq("")
-    if(options.host):
-      print("using the provided host training set to learn the microcomposition")
-      target=options.host
-    else:
-      print("No host training set provided, I will use the whole genome to learn the microcomposition")
-      target=options.genome
-    whole_seq=Seq("")
-    for record in SeqIO.parse(target, "fasta"):
-      whole_seq.seq=str(whole_seq)+"N"+str(record.seq)
-    genome=numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k if options.k else 4))
-
-    whole_conta=Seq("")
-    for record in SeqIO.parse(options.conta, "fasta"):
-      whole_conta.seq=str(whole_conta)+"N"+str(record.seq)
-    conta=numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k if options.k else 4))
-
-    fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"
-    if options.host:
-      fname=fname+ "host_"+str(os.path.basename(options.host))+"_"+options.dist+".dist"
-    else:
-      fname=fname+"wholegenome_"+options.dist+".dist"
-    #print(fname+" totot")
-    f = open(fname, 'w')
-    for record in SeqIO.parse(options.genome, "fasta"):
-      #f.write('>'+str(record.id)+"\n")
-      #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-      windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=genome,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-      #windows_distances=list()
-      for t in windows_distances:
-        f.write(str("\t".join(map(str,t)))+"\n")
-    f.close()
-    
-    fname=str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"+"conta_"+str(os.path.basename(options.conta))+"_"+options.dist+".dist"
-    #print(fname+" totowdawdt")
-    f = open(fname, 'w')
-    for record in SeqIO.parse(options.genome, "fasta"):
-      #f.write('>'+str(record.id)+"\n")
-      #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-      windows_distances=sliding_windows_distances(str(record.seq),seq_id=record.id,mcp_comparison=conta,position=True,dist=options.dist, windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-      #windows_distances=list()
-      for t in windows_distances:
-        f.write(str("\t".join(map(str,t)))+"\n")
-    f.close()
-
-
+    main()
