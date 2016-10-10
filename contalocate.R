@@ -23,15 +23,6 @@ dist="KL"
 # host_sample_fasta="/home/ludovic/taff/projects/inra/sequences/TH12_prefix.fna"
 # conta_sample_fasta="TH12_positions_Burk.GFF.gdna.fasta"
 
-# spec <- matrix(c(
-#         'genome'         , 'i', 1, "character", "file from fastq-stats -x (required)",
-#         'host_learn'     , 'r', 2, "character", "input gc content file (optional)",
-#         'conta_learn'    , 'c', 1, "character", "output filename (optional)",
-#         'win_step'       , 't', 2, "int", "output filename (optional)",
-#         'win_size'       , 'w', 2, "int", "output filename (optional)",
-#         'dist'           , 'd', 2, "character", "KL, JSD or Eucl. the divergence function used. respectivelly Kullback-Leibler, Jensen_Shannon and Euclidean. Default: KL(optional)",
-#         'help'           , 'h', 0, "logical",   "this help"
-# ),ncol=5,byrow=T)
 
 spec <- matrix(c(
         'genome'         , 'i', 1, "character", "file from fastq-stats -x (required)",
@@ -50,6 +41,7 @@ opt = getopt(spec);
 # [[""]]
 if (!is.null(opt[["help"]]) || is.null(opt[["genome"]])) {
     cat(paste(getopt(spec, usage=T),"\n"));
+    quit(save="no", status = 1)
 }
 # print("parameters:")
 # print(paste(names(opt),opt[names(opt)]))
