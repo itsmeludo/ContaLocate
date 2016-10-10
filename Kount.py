@@ -39,7 +39,7 @@ __email__ = ""
 import os, re, math, sys, argparse
 from collections import Counter
 import multiprocessing
-from itertools import product
+from itertools import product, repeat, combinations_with_replacement, permutations
 
 import numpy
 from Bio import SeqIO
@@ -175,7 +175,8 @@ def frequency(seq, ksize=4, strand="both"):
     word_count = sum(c.values())
     if (word_count > 0):
         ret=list()
-        word_universe=list(map("".join,(list(product(("C","G","A","T"),("C","G","A","T"),("C","G","A","T"),("C","G","A","T"))))))
+        letter_list = list(product(("C","G","A","T"), repeat=ksize))
+        word_universe = list(map("".join,letter_list))
         for w in word_universe:
         #for w in word_order:
             if(c.get(w) != None):
@@ -188,6 +189,8 @@ def frequency(seq, ksize=4, strand="both"):
         # LM Right, it should not go there unless the sequence is strictly shorter than k. there is no reason to exit the program for this if only a few sequences are in this case, although their frequencies is trash. By default, the contig sequence would have to be 3bp long to arrive here. Albeit it can happen, I decided to set the frequency to 1 instead of a vector of values. I haven't tested what happen in that case, TODO. I'm also curious about how long it will take for someone to report this because they tried to compute an oligonucleotide profile of k length with a sequence of k-1 oo'
         return 1
 
+
+frequency(seq1,5)
 
 def parallel_subwin_dist(args):
     res=list()
