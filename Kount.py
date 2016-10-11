@@ -37,9 +37,9 @@ __status__ = "alpha"
 __email__ = ""
 
 import os, re, math, sys, argparse
-from collections import Counter
 import multiprocessing
-from itertools import product, repeat, combinations_with_replacement, permutations
+from collections import Counter
+from itertools import product
 
 import numpy
 from Bio import SeqIO
