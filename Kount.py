@@ -112,15 +112,12 @@ def JSD(a,b):
     """ JSD distance
     """
     #with numpy.errstate(invalid='ignore'):
-    h = (a + b)/2
-    d = (KL(a,h)/2)+(KL(b,h)/2)
+    h = 0.5*(a + b)/2
+    d = 0.5*(KL(a,h) + KL(b,h))
     return d
     
-   
 def vector_to_matrix(profile):
     return list((zip(*(iter(profile),)*int(math.sqrt(len(profile))))))
-  
-  
   
 def chunkitize(liste, chunks):
     out=list()
@@ -131,66 +128,117 @@ def chunkitize(liste, chunks):
 
 #chunkitize([1, 2, 3, 4, 5], 2)
 
-
-
-
-def select_strand (seq,strand="both"):
-    Bioseq_record=Seq(seq)
-    if(strand =="both"):
-        return str(str(seq)+str(Bioseq_record.reverse_complement())).upper()
-    elif(strand == "minus"):
-        return str(Bioseq_record.reverse_complement()).upper()
-    elif(strand == "plus"):
-        return str(seq).upper()
+def select_strand (seq, strand="both"):
+    """ choose which strand to work on
+    
+    Parameters:
+    -----------
+    seq: Seq
+        a str object containing a nucleotide sequence, that can be converted into a Bio.Seq object
+    strand: string
+        select wich strand to use
+    
+    Return:
+    -------
+    seq: string
+        the sequence strand
+    """
+    Bioseq_record = Seq(seq)
+    if (strand == "both"):
+        new_seq = str(str(seq)+str(Bioseq_record.reverse_complement()))
+    elif (strand == "minus"):
+        new_seq = str(Bioseq_record.reverse_complement())
+    elif (strand == "plus"):
+        new_seq = str(seq)
     else:
-        # TBF: should an exit or an Exception be raised here? I guess the program should never go here right?
-        #LM yep
-        raise ValueError('the strand parameter you set up on the command line can not be interpreted, please use "both","minus" or "plus" , case sensitive, no extra space.')
-        exit()
-        return 1
-   
-   
+        print("Error, strand parameter of selectd_strand() should be choose from {'both', 'minus', 'plus'}", file=sys.stderr)
+        sys.exit(1)
+    return new_seq
+
+def cut_sequence_and_count(seq, ksize):
+    """ cut sequence in words of size k
+    
+    Parameters:
+    -----------
+    seq: string
+        The nucleotide sequence
+    ksize: int
+        The size of the kmer
+    
+    Return:
+    -------
+    count_words: dict
+        a dictionary storing the number of observations of each word
+    kword_count: int
+        the total number of words
+    """
+    seq_words = list()
+    # re.split: excludes what is not a known characterised nucleotide 
+    for subseq in re.split('[^ACGT]+', seq): 
+        if (len(subseq) >= ksize):
+            #get all kword in sub-sequence
+            seq_words.extend(subseq[i: i+ksize] for i in range(len(subseq)-(ksize-1)))  
+    count_words = Counter(seq_words)
+    kword_count = sum(count_words.values())
+    return count_words, kword_count
+
+def count2freq(count_words, kword_count, ksize):
+    """ transform raw count into a feature vector of frequencies
+    
+    Parameters:
+    -----------
+    count_words: dict
+        a dictionary storing the number of observations of each word
+    kword_count: int
+        the total number of words
+    ksize: int
+        the size of the kmer
+        
+    Return:
+    -------
+    features: np.array
+        a feature vector of the frequency of each word in the read
+    """
+    features = list()
+    if kword_count > 0:
+        # iterate over letter product
+        for letter_word in product(("C","G","A","T"), repeat=ksize):
+            kword = "".join(letter_word)
+            if kword in count_words:
+                features.append(count_words[kword]/kword_count)
+            else:
+                features.append(0)
+    else:
+        features = [0 for kword in range(4**ksize)]
+    return np.array(features)
+
 def frequency(seq, ksize=4, strand="both"):
-    """ Computes the frequencies of the k-long overlapping oligonucleotides in a sequence. only word composed exclusively of ACGT are taken into account.
+    """ compute kmer frequency, ie feature vector of each read
+    
+    Parameters:
+    -----------
+    seq: string
+        The nucleotide sequence
+    ksize: int
+        The size of the kmer
+    strand: string
+        which strand to used
+        
+    Return:
+    -------
+    features: np.array
+        a feature vector of the frequency of each word in the read
     """
     seq = select_strand(seq, strand)
-    seq_words = list()
-    d = dict()
-    #excludes what is not a known characterised nucleotide 
-    for s in re.split('[^ACGTacgt]+', seq): 
-        seq_letters = list(s)
-        ##print(len(s))
-        if (len(seq_letters) >= ksize):
-            # launch k-1 times the word generation with 1 nucleotide shift
-            # every iteration to have overlapping words.
-            for i in range(ksize-1):
-                #generate words from seq_letters
-                words = list((zip(*(iter(seq_letters),)*ksize)))
-                # adds the words for this subsequence and 
-                # frame to the total list of words
-                seq_words.extend(list(map(''.join, words))) 
-                # shift one to compute overlapping words at the next iteration
-                seq_letters.pop(0) 
-    c = Counter(seq_words)
-    word_count = sum(c.values())
-    if (word_count > 0):
-        ret=list()
-        letter_list = list(product(("C","G","A","T"), repeat=ksize))
-        word_universe = list(map("".join,letter_list))
-        for w in word_universe:
-        #for w in word_order:
-            if(c.get(w) != None):
-                ret.append(c.get(w)/word_count)
-            else:
-                ret.append(0)
-        return ret
-    else:
-        # TBF should an exit or an Exception be raised here? I guess the program should never go here right?
-        # LM Right, it should not go there unless the sequence is strictly shorter than k. there is no reason to exit the program for this if only a few sequences are in this case, although their frequencies is trash. By default, the contig sequence would have to be 3bp long to arrive here. Albeit it can happen, I decided to set the frequency to 1 instead of a vector of values. I haven't tested what happen in that case, TODO. I'm also curious about how long it will take for someone to report this because they tried to compute an oligonucleotide profile of k length with a sequence of k-1 oo'
-        return 1
+    # we work on upper case letters
+    seq = seq.upper()
+    # raw word count
+    count_words, kword_count = cut_sequence_and_count(seq, ksize)
+    # create feature vector
+    features = count2freq(count_words, kword_count, ksize)
+    return features
 
-
-frequency(seq1,5)
+#frequency(seq1,5)
 
 def parallel_subwin_dist(args):
     res=list()
@@ -247,7 +295,7 @@ def parallel_subwin_dist(args):
   #return(res)
 
 
-def sliding_windows_distances(seq, mcp_comparison, seq_id, dist="KL", windows_size=5000, windows_step=500, ksize=4, position=False):
+def sliding_windows_distances(seq, mcp_comparison, seq_id, dist="JSD", windows_size=5000, windows_step=500, ksize=4, position=False):
     #seq=str(Bioseq_record.seq)
     ret=list()
     if(len(seq)<windows_size): #only enough to compute one window, no sliding,
