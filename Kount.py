@@ -36,97 +36,147 @@ __version__ = "0.1"
 __status__ = "alpha"
 __email__ = ""
 
-import os, re, math, sys, argparse
-import multiprocessing
+from scoop import futures
+
+import os, re, math, sys, argparse, time
+import tempfile
+import numpy as np
+import multiprocessing, shlex, subprocess, pickle, shutil
+
+from Bio import SeqIO
+from Bio.Seq import Seq
 from collections import Counter
 from itertools import product
 
-import numpy
-from Bio import SeqIO
-from Bio.Seq import Seq
+import numpy as np
+from sklearn.externals.joblib import Parallel, delayed
+from sklearn.externals.joblib import dump, load
+from sklearn.metrics.pairwise import euclidean_distances
+from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.metrics.pairwise import check_pairwise_arrays
+from sklearn.utils import gen_even_slices
 
 
-numpy.seterr(divide='ignore', invalid='ignore')
+
+np.seterr(divide='ignore', invalid='ignore')
 #TBF: wtf way to long ! (-:
 #minimum_number_of_windows_per_fasta_entry_to_use_multiple_cpu_for_this_entry=20
 #LM Fine by me, this very variable makes the implementation very much complicated and triggers the multicore or serial mode depending on the number of windows in a contig. therefore I wanted to be explicit on what it does. But I guess this mere sentence explqins it now ^^.
 min_nb_w_per_fasta_for_mul_cpu=20
 
-# TBF too ugly on one line 
-#LM Actually this only needed to represent the matrix according to the spatialisation of the chaos game representation. It only works with 4-mers and I'm too lazy to port the algo to make it generic because it is not used in the program. In PhylOligo, I generalised with "word_universe" at the loss of the CGR representation (order is wrong to represent as a matrix with kmer spacial coherence).
-#so, I comment it, it is only  necessary for vector_to_matrix() to be consistent with the GOHTAM database which is not connected here anyway so that the matrix can be sought against the DB instead of having to recompute the profile first. It would have been great, but recomputing profile within GOHTAM is cheaper in brain time, and out of scope for this Contalocate in this version.
-#I changed word_order to word_universe in frequency() as I implemented in PhylOligo afterwards.
-#word_order =( "CCCC", "GCCC", "CGCC", "GGCC", "CCGC", "GCGC", "CGGC", "GGGC", 
-             #"CCCG", "GCCG", "CGCG", "GGCG", "CCGG", "GCGG", "CGGG", "GGGG", 
-             #"ACCC", "TCCC", "AGCC", "TGCC", "ACGC", "TCGC", "AGGC", "TGGC", 
-             #"ACCG", "TCCG", "AGCG", "TGCG", "ACGG", "TCGG", "AGGG", "TGGG", 
-             #"CACC", "GACC", "CTCC", "GTCC", "CAGC", "GAGC", "CTGC", "GTGC", 
-             #"CACG", "GACG", "CTCG", "GTCG", "CAGG", "GAGG", "CTGG", "GTGG", 
-             #"AACC", "TACC", "ATCC", "TTCC", "AAGC", "TAGC", "ATGC", "TTGC", 
-             #"AACG", "TACG", "ATCG", "TTCG", "AAGG", "TAGG", "ATGG", "TTGG", 
-             #"CCAC", "GCAC", "CGAC", "GGAC", "CCTC", "GCTC", "CGTC", "GGTC", 
-             #"CCAG", "GCAG", "CGAG", "GGAG", "CCTG", "GCTG", "CGTG", "GGTG", 
-             #"ACAC", "TCAC", "AGAC", "TGAC", "ACTC", "TCTC", "AGTC", "TGTC", 
-             #"ACAG", "TCAG", "AGAG", "TGAG", "ACTG", "TCTG", "AGTG", "TGTG", 
-             #"CAAC", "GAAC", "CTAC", "GTAC", "CATC", "GATC", "CTTC", "GTTC", 
-             #"CAAG", "GAAG", "CTAG", "GTAG", "CATG", "GATG", "CTTG", "GTTG", 
-             #"AAAC", "TAAC", "ATAC", "TTAC", "AATC", "TATC", "ATTC", "TTTC", 
-             #"AAAG", "TAAG", "ATAG", "TTAG", "AATG", "TATG", "ATTG", "TTTG", 
-             #"CCCA", "GCCA", "CGCA", "GGCA", "CCGA", "GCGA", "CGGA", "GGGA", 
-             #"CCCT", "GCCT", "CGCT", "GGCT", "CCGT", "GCGT", "CGGT", "GGGT", 
-             #"ACCA", "TCCA", "AGCA", "TGCA", "ACGA", "TCGA", "AGGA", "TGGA", 
-             #"ACCT", "TCCT", "AGCT", "TGCT", "ACGT", "TCGT", "AGGT", "TGGT", 
-             #"CACA", "GACA", "CTCA", "GTCA", "CAGA", "GAGA", "CTGA", "GTGA", 
-             #"CACT", "GACT", "CTCT", "GTCT", "CAGT", "GAGT", "CTGT", "GTGT", 
-             #"AACA", "TACA", "ATCA", "TTCA", "AAGA", "TAGA", "ATGA", "TTGA", 
-             #"AACT", "TACT", "ATCT", "TTCT", "AAGT", "TAGT", "ATGT", "TTGT", 
-             #"CCAA", "GCAA", "CGAA", "GGAA", "CCTA", "GCTA", "CGTA", "GGTA", 
-             #"CCAT", "GCAT", "CGAT", "GGAT", "CCTT", "GCTT", "CGTT", "GGTT", 
-             #"ACAA", "TCAA", "AGAA", "TGAA", "ACTA", "TCTA", "AGTA", "TGTA", 
-             #"ACAT", "TCAT", "AGAT", "TGAT", "ACTT", "TCTT", "AGTT", "TGTT", 
-             #"CAAA", "GAAA", "CTAA", "GTAA", "CATA", "GATA", "CTTA", "GTTA", 
-             #"CAAT", "GAAT", "CTAT", "GTAT", "CATT", "GATT", "CTTT", "GTTT", 
-             #"AAAA", "TAAA", "ATAA", "TTAA", "AATA", "TATA", "ATTA", "TTTA", 
-             #"AAAT", "TAAT", "ATAT", "TTAT", "AATT", "TATT", "ATTT", "TTTT")
+## Distance functions
 
+def posdef_check_value(d):
+    d[np.isnan(d)]=0    
+    d[np.isinf(d)]=0
 
-def KL(a,b):
-    """ KL measure 
+def KL(a, b):
+    """ compute the KL distance
     """
-    #with numpy.errstate(invalid='ignore'):
-    d = a * numpy.log(a/b)
-    d[numpy.isnan(d)]=0 
-    d[numpy.isinf(d)]=0
-    return (numpy.sum(d))*10000
+    if a.ndim == 1 and b.ndim == 1:
+        d = a * np.log(a/b)
+        posdef_check_value(d)
+        res = np.sum(d)
+    elif a.ndim == 2 and b.ndim == 2:
+        X, Y = check_pairwise_arrays(a, b)
+        X = X[:,np.newaxis]
+        d = X * np.log(X/Y)
+        posdef_check_value(d)
+        res = np.sum(d, axis=2).T
+    else:
+        print("Dimension erro in KL, a={}, b={}".format(a.ndim, b.ndim), file=sys.stderr)
+        sys.exit(1)
+    return res
 
-def Eucl(a,b):
-    """ Euclidean distance between two vectors 
+def Eucl(a, b):
+    """ compute Euclidean distance
     """
-    #with numpy.errstate(invalid='ignore'):
     d = pow(a-b,2)
-    d[numpy.isnan(d)]=0
-    d[numpy.isinf(d)]=0
-    return numpy.sqrt(numpy.sum(d))*10000
-
-def JSD(a,b):
-    """ JSD distance
-    """
-    #with numpy.errstate(invalid='ignore'):
-    h = 0.5*(a + b)/2
-    d = 0.5*(KL(a,h) + KL(b,h))
-    return d
+    posdef_check_value(d)
+    return np.sqrt(np.sum(d))*1000 # Scaling
     
+def JSD(a, b):
+    """ Compute JSD distance
+    """
+    if a.ndim == 1 and b.ndim == 1:
+        h = 0.5 * (a + b)
+        d = 0.5 * (KL(a, h) + KL(b, h))
+    elif a.ndim==2 and b.ndim == 1:
+        h = 0.5 * (a[np.newaxis,:] + b)
+        d1 = a[np.newaxis,:] * np.log(a[np.newaxis,:]/h)
+        posdef_check_value(d1)
+        d1 = np.sum(d1, axis=2)
+        d2 = b * np.log(b/h)
+        posdef_check_value(d2)
+        d2 = np.sum(d2, axis=2)
+        d = 0.5 * (d1 + d2)
+    else:
+        h = 0.5 * (a[np.newaxis,:] + b[:, np.newaxis])
+        d1 = a[np.newaxis,:] * np.log(a[np.newaxis,:]/h)
+        posdef_check_value(d1)
+        d1 = np.sum(d1, axis=2)
+        d2 = b[:, np.newaxis] * np.log(b[:, np.newaxis]/h)
+        posdef_check_value(d2)
+        d2 = np.sum(d2, axis=2)
+        d = 0.5 * (d1 + d2)
+        #d = d.T
+    return d*1000 # Scaling
+
 def vector_to_matrix(profile):
     return list((zip(*(iter(profile),)*int(math.sqrt(len(profile))))))
   
-def chunkitize(liste, chunks):
-    out=list()
-    chunk_size= int((len(liste) / float(chunks)))
-    for i in range(0,chunks):
-        out.append(liste[chunk_size*i:(chunk_size*i+chunk_size)if(i!=chunks-1)else len(liste)])
-    return out
+def read_seq_chunk_pos(sequences, chunksize):
+    """ read a first chunk of fasta sequences to be processed
+    
+    Parameters:
+    -----------
+    sequences: list
+        list of nucleotide sequences
+    chunksize: int
+        the number of fasta entries to read
+    
+    Return:
+    -------
+    seqchunk: list
+        a list of SeqRecord 
+    """
+    seqchunk = list()
+    start = 0
+    for seq in sequences:
+        seqchunk.append(str(record.seq))
+        if len(seqchunk) == chunksize:
+            yield start, start + chunksize, seqchunk
+            start += chunksize
+            seqchunk = list()
+    # the last chunk 
+    if seqchunk != []:
+        yield start, start+len(seqchunk), seqchunk
 
-#chunkitize([1, 2, 3, 4, 5], 2)
+def read_seq_chunk(genome, chunksize, pattern, strand):
+    """ read a first chunk of fasta sequences to be processed
+    
+    Parameters:
+    -----------
+    sequences: list
+        list of nucleotide sequences
+    chunksize: int
+        the number of fasta entries to read
+    
+    Return:
+    -------
+    seqchunk: list
+        a list of SeqRecord 
+    """
+    seqchunk = list()
+    pattern=str(pattern)
+    for record in SeqIO.parse(genome, "fasta"):
+        seqchunk.append((str(record.seq), pattern, strand))
+        if len(seqchunk) == chunksize:
+            yield seqchunk
+            seqchunk = list()
+    # the last chunk 
+    if seqchunk != []:
+        yield seqchunk
 
 def select_strand (seq, strand="both"):
     """ choose which strand to work on
@@ -155,16 +205,17 @@ def select_strand (seq, strand="both"):
         sys.exit(1)
     return new_seq
 
-def cut_sequence_and_count(seq, ksize):
-    """ cut sequence in words of size k
+def cut_sequence_and_count_pattern(seq, pattern, strand):
+    """ cut sequence in spaced-words of size k 
     
     Parameters:
     -----------
     seq: string
         The nucleotide sequence
-    ksize: int
-        The size of the kmer
-    
+    pattern: string
+        the binary space pattern to extract spaced-words example: 1001010001 
+        ksize is inferred from the number of '1' in the pattern
+        
     Return:
     -------
     count_words: dict
@@ -172,17 +223,24 @@ def cut_sequence_and_count(seq, ksize):
     kword_count: int
         the total number of words
     """
+    seq = select_strand(seq, strand)
+    # we work on upper case letters
+    seq = seq.upper()
+    
     seq_words = list()
+    #ksize=pattern.count('1')
+    pattern=str(pattern)
+    target_index = [i  for i,j in enumerate(pattern) if j=="1"]
+
     # re.split: excludes what is not a known characterised nucleotide 
     for subseq in re.split('[^ACGT]+', seq): 
-        if (len(subseq) >= ksize):
+        if (len(subseq) >= len(pattern)):
             #get all kword in sub-sequence
-            seq_words.extend(subseq[i: i+ksize] for i in range(len(subseq)-(ksize-1)))  
+            seq_words.extend("".join(list(map( lambda x: subseq[i+x], target_index))) for i in range(len(subseq)-(len(pattern)-1)))
     count_words = Counter(seq_words)
-    kword_count = sum(count_words.values())
-    return count_words, kword_count
+    return count_words
 
-def count2freq(count_words, kword_count, ksize):
+def count2freq(count_words, ksize):
     """ transform raw count into a feature vector of frequencies
     
     Parameters:
@@ -200,6 +258,7 @@ def count2freq(count_words, kword_count, ksize):
         a feature vector of the frequency of each word in the read
     """
     features = list()
+    kword_count = sum(count_words.values())
     if kword_count > 0:
         # iterate over letter product
         for letter_word in product(("C","G","A","T"), repeat=ksize):
@@ -212,15 +271,16 @@ def count2freq(count_words, kword_count, ksize):
         features = [0 for kword in range(4**ksize)]
     return np.array(features)
 
-def frequency(seq, ksize=4, strand="both"):
+def compute_frequency(seq, n_max_freq_in_windows=1.0, pattern="1111", strand="both"):
     """ compute kmer frequency, ie feature vector of each read
     
     Parameters:
     -----------
     seq: string
         The nucleotide sequence
-    ksize: int
-        The size of the kmer
+    pattern: string
+        the binary space pattern to extract spaced-words example: 1001010001 
+        ksize is inferred from the number of '1' in the pattern
     strand: string
         which strand to used
         
@@ -229,159 +289,194 @@ def frequency(seq, ksize=4, strand="both"):
     features: np.array
         a feature vector of the frequency of each word in the read
     """
-    seq = select_strand(seq, strand)
-    # we work on upper case letters
-    seq = seq.upper()
-    # raw word count
-    count_words, kword_count = cut_sequence_and_count(seq, ksize)
-    # create feature vector
-    features = count2freq(count_words, kword_count, ksize)
+    
+    pattern=str(pattern)
+    ksize = pattern.count("1")
+    if((seq.count('N')/len(seq)) <= float(n_max_freq_in_windows)):
+        count_words = cut_sequence_and_count_pattern(seq, pattern, strand)
+        # create feature vector
+        features = count2freq(count_words, ksize)
+    else:
+        features = np.array([np.nan] * ksize**4)
     return features
 
-#frequency(seq1,5)
+def compute_whole_composition(genome, pattern, strand, nb_jobs=1):
+    """ for each sequence of the genome, separately compute words numbers,
+    aggregate results and convert to frequency
+    """
+    pattern=str(pattern)
+    ksize = pattern.count("1")
+    fd = delayed(cut_sequence_and_count_pattern)
+    counts = Parallel(n_jobs=nb_jobs, verbose=0)(fd(str(record.seq), pattern, strand) 
+                                            for record in SeqIO.parse(genome, "fasta"))
+    # aggregate
+    count_words = Counter()
+    for par_counts in counts:
+        for word in par_counts:
+            count_words[word] += par_counts[word]
+    # create feature vector
+    frequency = count2freq(count_words, ksize)
+    return frequency
 
-def parallel_subwin_dist(args):
-    res=list()
-    for window,start,stop,seq_id,mcp_comparison,windows_size,windows_step,ksize,dist,position,contig_size in args:
-        #print(window,start,stop,mcp_comparison,windows_size,windows_step,ksize,dist,position)
-        #to avoid border effects being a problem in the code, 
-        # we use only the simple formula start+windows_size/2 (+/-) windows_step/2 
-        # to find the significant center part of the windows. 
-        # when several windows overlap, this centered part, 
-        # long as the windows step is the most representative of the windows, 
-        # not representing as much other part of this window that are 
-        # overlapped by other windows. 
-        # BUT: this simple formula has border effects, 
-        # so we manually correct the start of the first window and
-        # the stop of the last window to match the contig borders.
-        if(start == (windows_size/2-windows_step/2)):
-            displayed_start=1
-        else:
-             displayed_start=start
-        if (stop-windows_step/2+windows_size/2>=contig_size-windows_step and 
-                stop-windows_step/2+windows_size/2<=contig_size):
-            displayed_stop=contig_size
-        else:
-            displayed_stop=stop
-        if ((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-            if (position==False):
-                res.append(globals()[dist](mcp_comparison,
-                        numpy.array(frequency(seq=window,ksize=ksize))))
-            else:
-                res.append([seq_id,displayed_start,displayed_stop,
-                        globals()[dist](mcp_comparison, 
-                            numpy.array(frequency(seq=window,ksize=ksize)))])
-        else:
-            if(position==False):
-                res.append(numpy.nan)
-            else:
-                res.append([seq_id,displayed_start,displayed_stop,numpy.nan])
-    return(res)
-
-#def subwin_dist(args):
-  #window,start,stop,mcp_comparison,windows_size,windows_step,ksize,dist,position = args
-  ##print(threading.currentThread().getName(), 'Starting')
-  ##print("Process "+str(start)+"\n")
-  #if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-    #if(position==False):
-      #res=globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize)))
-    #else:
-      #res=[start,stop,globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize)))]
-  #else:
-    #if(position==False):
-      #res=numpy.nan
-    #else:
-      #res=[start,stop,numpy.nan]
-  #return(res)
+    
+def compute_distance_joblib(mth_dist, mcp, seq, pattern, strand , n_max_freq_in_windows):
+    freq = compute_frequency(seq, n_max_freq_in_windows, pattern, strand)
+    if mth_dist == "JSD":
+        return JSD(freq, mcp)
+    else:
+        return Eucl(freq, mcp)
 
 
-def sliding_windows_distances(seq, mcp_comparison, seq_id, dist="JSD", windows_size=5000, windows_step=500, ksize=4, position=False):
-    #seq=str(Bioseq_record.seq)
-    ret=list()
-    if(len(seq)<windows_size): #only enough to compute one window, no sliding,
-        if((seq.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-            if(position==False):
-                ret.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=seq,ksize=ksize,strand=strand))))
-            else:
-                ret.append([seq_id,0,int(len(seq)),globals()[dist](mcp_comparison,frequency(seq=seq,ksize=ksize,strand=strand))])
-        else:
-            if(position==False):
-                ret.append(numpy.nan)
-            else:
-                ret.append([seq_id,0,int(len(seq)),numpy.nan])
-    elif(len(seq)<min_nb_w_per_fasta_for_mul_cpu*windows_step): #not many windows in this contig, so better launching it in serial rather than in parallel
-        tmp_out=list()
-        if(position==False):
-            for s in range(0,len(seq)-windows_size,windows_step):
-                window=seq[s:s+windows_size]
-                if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-                    tmp_out.append( globals()[dist](mcp_comparison,numpy.array(frequency(seq=window,ksize=ksize,strand=strand))))
-                else:
-                    tmp_out.append(numpy.nan)
-        else:
-            for s in range(0,len(seq)-windows_size,windows_step):
-                if(s==0):# to avoid border effects being a problem in the code, we use only the simple formula start+windows_size/2 (+/-) windows_step/2 to find the significant center part of the windows. when several windows overlap, this centered part, long as the windows step is the most representative of the windows, not representing as much other part of this window that are overlapped by other windows. BUT: this simple formula has border effects, so we manually correct the start of the first window and the stop of the last window to match the contig borders.
+def compute_distances(mthdrun, large, mth_dist, mcp, sequences, pattern, strand, njobs, n_max_freq_in_windows):
+    
+    if mthdrun == "joblib":
+        if large == "None":
+            fd = delayed(compute_distance_joblib)
+            res = Parallel(n_jobs=njobs, verbose=0)(fd(mth_dist, mcp, sequences[i], pattern, strand , n_max_freq_in_windows) 
+                                                    for i in range(len(sequences)))
+            res = np.array(res)
+            #print(res.shape)
+    return res
+
+def make_genome_chunk(genome, windows_size, windows_step, options, nbchunk=500):
+    """ create chunk of genome sequences
+    """
+    chunk_info = list()
+    chunk_sequences = list()
+    for record in SeqIO.parse(genome, "fasta"):
+        seq = str(record.seq)
+        seq_id = record.id
+        
+        if len(seq) < windows_size: #only enough to compute one window, no sliding,
+            chunk_info.append([seq_id, 0, int(len(seq))])
+            chunk_sequences.append(seq)
+                
+            if len(chunk_info) == nbchunk:
+                yield chunk_info, chunk_sequences
+                chunk_info, chunk_sequences = list(), list()
+                
+        elif len(seq) < min_nb_w_per_fasta_for_mul_cpu*windows_step:
+            #not many windows in this contig, so better launching it in serial rather than in parallel
+            for s in range(0, len(seq)-windows_size, windows_step):
+                if s==0:
+                    # to avoid border effects being a problem in the code, we use only the simple formula 
+                    # start+windows_size/2 (+/-) windows_step/2 to find the significant center part of the windows. 
+                    # when several windows overlap, this centered part, long as the windows step is the most representative of the windows,
+                    # not representing as much other part of this window that are overlapped by other windows. 
+                    # BUT: this simple formula has border effects, so we manually correct the start of the first window and 
+                    # the stop of the last window to match the contig borders.
                     displayed_start=1
                 else:
                     displayed_start=int(s+windows_size/2-windows_step/2)
 
-                if(s==len(seq)-windows_size):
+                if s==len(seq)-windows_size:
                     displayed_stop=len(seq)
                 else:
                     displayed_stop=int(s+windows_size/2+windows_step/2)
 
                 window=seq[s:s+windows_size]
-                if((window.count('N')/windows_size) <= float(options.n_max_freq_in_windows)):
-                    tmp_out.append([seq_id,displayed_start,displayed_stop,globals()[dist](mcp_comparison,frequency(seq=window,ksize=ksize,strand=strand))])
+                chunk_info.append([seq_id, displayed_start, displayed_stop])
+                chunk_sequences.append(window)
+                
+                if len(chunk_info) == nbchunk:
+                    yield chunk_info, chunk_sequences
+                    chunk_info, chunk_sequences = list(), list()
+                    
+        else:
+            for s in range(0,len(seq)-windows_size,windows_step):
+                start, stop = int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2)
+                if start == (windows_size/2-windows_step/2):
+                    displayed_start=1
                 else:
-                    tmp_out.append([seq_id,displayed_start,displayed_stop,numpy.nan])
-        for i in tmp_out:
-            ret.append(i)
-    else:
-        args = [(seq[s:s+windows_size],int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2),seq_id,mcp_comparison,windows_size, windows_step, ksize,dist, position,len(seq)) for s in range(0,len(seq)-windows_size,windows_step)]
-        parallel_args_set=chunkitize(args,options.threads_max) 
-        pool= multiprocessing.Pool(processes=options.threads_max)
-        res=pool.map(parallel_subwin_dist, parallel_args_set)
-        pool.close()
-        pool.join()
-        for i in res:
-            for g in i:
-                ret.append(g)
-    return ret
+                    displayed_start=start
+                if stop-windows_step/2+windows_size/2 >= len(seq)-windows_step and stop-windows_step/2+windows_size/2 <= len(seq):
+                    displayed_stop = len(seq)
+                else:
+                    displayed_stop = stop
+                    
+                chunk_info.append([seq_id, displayed_start, displayed_stop])
+                chunk_sequences.append(seq[s:s+windows_size])
+                if len(chunk_info) == nbchunk:
+                    yield chunk_info, chunk_sequences
+                    chunk_info, chunk_sequences = list(), list()
 
-#def subwin_feq(window,windows_size=5000,windows_step=500,ksize=4):
-    #if((window.count('N')/windows_size)>= options.n_max_freq_in_windows):
-        #q.put(numpy.array(numpy.nan))
-    #else:
-        #q.put(numpy.array(frequency(seq=window,ksize=ksize)))
+    # last chunk to return
+    if len(chunk_info) != 0:
+        yield chunk_info, chunk_sequences
 
-#def sliding_windows_frequencies(seq,windows_size=5000,windows_step=500,ksize=4,position=False):
-    ##seq=str(Bioseq_record.seq)
-    #if(len(seq)<windows_size): #only enough to compute one window, no sliding,
-        #return numpy.array(frequency(seq=seq,ksize=ksize))
-    #else:
-        #ret = list()
-        #q = Queue()
-        #with concurrent.futures.ThreadPoolExecutor(max_workers=options.threads_max) as executor:
-            #for s in range(0,len(seq)-windows_size,windows_step):
-                ##print(s,s+windows_size)
-                #window=seq[s:s+windows_size]
-                #executor.submit(subwin_feq, window,windows_size,windows_step,ksize)
-        #while not q.empty():
-            #ret.append(q.get())
-        #return ret
-
-#def sliding_windows_target_regions(seq, windows_size=5000, windows_step=500):
-    ##seq=str(Bioseq_record.seq)
-    #if(len(seq)<windows_size): #only enough to compute one window, no sliding,
-        #return list(0,len(seq))
-    #else:
-        #ret=list()
-        #for s in range(0,len(seq)-windows_size,windows_step):
-            ##print(s,s+windows_size)
-            #window=[int(s+windows_size/2-windows_step/2),int(s+windows_size/2+windows_step/2)]
-            #ret.append(window)
-    #return ret
+def sliding_windows_distances(genome, mcp_comparison, mth_dist="JSD", pattern="1111", windows_size=5000, windows_step=500, options=None):
+                              
+    """ Stuff
+    
+    Parameters:
+    ===========
+    seq: Seq object
+        the processed sequence
+    seq_id: string 
+        the id of the processed sequence 
+    mcp_comparison: np.array 
+        the kmer frequencies of the query (host or genome) 
+    position: bool
+        ???
+    mth_dist: string
+        the distance method
+    windows_size: int 
+        the size of the sequence to process 
+    windows_step: int 
+        the number of nucleotide to slid the window
+    pattern: string
+        kmer pattern with gap
+    """
+    
+    cnt = 0
+    t1_tot = time.time()
+    for chunk_info, sequences in make_genome_chunk(genome, windows_size, windows_step, options, 50000):
+        res = list()
+        if mth_dist == "JSD":
+            vec_dist = compute_distances("joblib", "None", mth_dist, mcp_comparison, 
+                                        sequences, pattern, options.strand, 
+                                        options.threads_max, options.n_max_freq_in_windows)
+            for i in range(vec_dist.shape[0]):
+                res.append(chunk_info[i]+[vec_dist[i]])
+        else:
+            #freq  = compute_frequencies("joblib", "None", sequences, pattern, 
+                                    #options.strand, options.threads_max, 
+                                    #options.n_max_freq_in_windows, options.workdir)
+            #t2 = time.time()
+            vec_dist = pairwise_distances(freq, mcp_comparison, n_jobs=options.threads_max)
+            #print(np.allclose(test_dist, vec_dist))
+            #print(vec_dist.shape)
+            for i in range(vec_dist.shape[0]):
+                res.append(chunk_info[i]+[vec_dist[i]])
+        yield res 
+        #t3 = time.time()
+        #print(cnt, t2-t1, t3-t2)
+        #cnt += 1
+    #t2_tot = time.time()
+    #print("Done in", t2_tot - t1_tot)
+    
+def concate_sequence(inputfile, file_format="fasta"):
+    """ agglomerate all sequences in memory in a single Seq object
+    
+    Parammeters:
+    ============
+    inputfile: string
+        path to the sequence file
+    file_format: string
+        format of the sequence file (see BioPython SeqIO.parse for a list of available format
+        
+    Return:
+    =======
+    whole_seq: string
+        a unique string of sequence separated by N, k-mer with N are not taken into account (boundaries of sequences)
+    """
+    seq = []
+    for record in SeqIO.parse(inputfile, file_format):
+        seq.append(str(record.seq))
+    # N is not interpreted to compute frequencies, so by putting one between two sequences, 
+    # we avoid to account for the chimeric words that would be created by juxtaposing the 2 sequences.
+    whole_seq = "N".join(seq)
+    return whole_seq
 
 def get_cmd():
     """ read command line arguments
@@ -395,37 +490,30 @@ def get_cmd():
                     help="optional host species training set in multifasta")
     parser.add_argument("-n", "--n_max_freq_in_windows", action="store", 
                     type=float, dest="n_max_freq_in_windows", default = 0.4,
-                    help = "maximum proportion of N tolerated in a window to "
-                    " compute the microcomposition anyway [0~1]. "
-                    "Too much 'N's will reduce the number of kmer counts and "
-                    "will artificially coarse the frequency resolutions")
+                    help = "maximum proportion of N tolerated in a window to compute the microcomposition anyway [0~1]. "
+                    "Too much 'N's will reduce the number of kmer counts and will artificially coarse the frequency resolutions")
                     #"If your assembly contains many stretches of 'N's, "
                     #"consider rising this parameter and shortening the windows"
                     #" step in order to allow computation and signal in the "
                     #"output, it might cost you computational time though. "
                     #"Windows which do not meet this criteria will be affected "
                     #"a distance of 'nan'")
-    parser.add_argument("-k", "--lgMot", action="store", dest="k", type=int, 
-                default=4, help="word wise/ kmer lenght/ k [default:%(default)d]")
-    parser.add_argument("-w", "--windows_size", action="store", 
-                    dest="windows_size", type=int, 
+    parser.add_argument("-k", "--lgMot", action="store", dest="k", type=int, default=4, 
+                    help="word wise/ kmer lenght/ k [default:%(default)d]")
+    parser.add_argument("-p", "--pattern", action="store", dest="pattern",
+                    help="pattern to use for frequency computation")
+    parser.add_argument("-w", "--windows_size", action="store", dest="windows_size", type=int, default=5000,
                     help="Sliding windows size (bp)")
-    parser.add_argument("-t", "--windows_step", action="store", 
-                    dest="windows_step", type=int, 
+    parser.add_argument("-t", "--windows_step", action="store", dest="windows_step", type=int, default=500, 
                     help="Sliding windows step size(bp)")
-    parser.add_argument("-s", "--strand", action="store", default="double", 
-                    choices=["double", "leading", "lagging"],
-                    help="strand used to compute microcomposition. leading, "
-                    "lagging ou double [default:%(default)s]")
-    parser.add_argument("-d", "--distance", action="store", dest="dist", 
-                  default="JSD", help="distance method between two signatures:"
-                    "KL: Kullback-Leibler, "
-                    "Eucl : Euclidienne[default:%(default)s], "
-                    "JSD : Jensen-Shannon divergence")
-    parser.add_argument("-u", "--cpu", action="store", dest="threads_max", 
-                    type=int, default=4, 
-                    help="how maany threads to use for windows "
-                    "microcomposition computation[default:%(default)d]")
+    parser.add_argument("-d", "--distance", action="store", dest="dist", choices=["JSD", "Eucl"],
+                    default="JSD", help="distance method between two signatures: "
+                    "Eucl : Euclidienne, JSD : Jensen-Shannon divergence [default:%(default)s]")
+    parser.add_argument("-s", "--strand", action="store", default="both",  choices=["both", "plus", "minus"],
+                    help="strand used to compute microcomposition. [default:%(default)s]")
+    parser.add_argument("-u", "--cpu", action="store", dest="threads_max", type=int, default=4, 
+                    help="how maany threads to use for windows microcomposition computation[default:%(default)d]")
+    parser.add_argument("-W", "--workdir", action="store", dest="workdir", default=".", help="working directory")
 
     options = parser.parse_args()
 
@@ -435,104 +523,80 @@ def main():
 
     # get parameters
     options = get_cmd()
-
+    
+    print("Genome : {}".format(options.genome))
+    
+    base_genome = os.path.basename(options.genome)
+    
+    # preparing output file
+    if not os.path.isdir(options.workdir):
+        os.makedirs(options.workdir)
+    
+    # read target sequence (host or genome)
     if (not options.conta):
-        whole_seq = Seq("")
-        for record in SeqIO.parse(options.genome, "fasta"):
-            # TBF: why add a N?
-            #LM N is not interpreted to compute frequencies, so by putting one between two sequences, I avoid to account for the chimeric words that would be created by juxtaposing the 2 sequences.
-            whole_seq.seq = str(whole_seq)+"N"+str(record.seq)
-        genome = numpy.array(frequency(seq=str(whole_seq.seq),ksize=option.k))
+        #no contaminant, genome is the target
+        target = options.genome
+        print("Contaminant : {}".format(None))
+        output = os.path.join(options.workdir, base_genome + ".mcp_windows_vs_whole_" + options.dist+".dist")
+    else:
+        base_conta = os.path.basename(options.conta)
+        print("Contaminant : {} ".format(options.conta))
+        output = base_genome+".mcp_hostwindows_vs_"
+        if options.host:
+            base_host = os.path.basename(options.host)
+            # the host is target
+            print("Host : {}".format(options.host))
+            target = options.host
+            output = os.path.join(options.workdir, output+"host_"+base_host+"_"+options.dist+".dist")
+        else: 
+            #contaminant is provided but no host, genome is the target
+            print("Host : None, using whole genome".format(options.host))
+            output = os.path.join(options.workdir, output+"wholegenome_"+options.dist+".dist")
+            target = options.genome
+        
+    if type(options.pattern) == int and not options.k:
+        options.pattern = "1" * options.pattern
+    elif not options.pattern and options.k:
+        options.pattern = "1" * options.k
+        
+    # one vector shape of ksize**4
+    genome =  compute_whole_composition(options.genome, options.pattern, options.strand, nb_jobs=options.threads_max)
+    
+    if (not options.conta):
         
         if (not options.windows_size and not options.windows_step):
-            #parser.error("An input fasta file (-i ) is mandatory")
-            print("Warning: A genome was provided but no training set to learn the contamination profile (-c). "
-                  "You didn't provide sliding window parameters (-w -t), "
-                  "the signature will be computed from the whole genome ", file=sys.stderr)
+            print("Warning, no sliding window parameters (-w and -t )\n"
+                "The signature will be computed from the whole genome\n"
+                "Computing signature from the whole genome", file = sys.stderr)
             
-            with open(str(os.path.basename(options.genome))+".microcomposition.mat", 'w') as outf:
+            output = os.path.join(options.workdir, base_genome+".microcomposition.mat")
+            with open(output, 'w') as outf:
                 outf.write(str(vector_to_matrix(genome)))
             
+            sys.exit(0)
         elif (options.windows_size or options.windows_step):
-            print("Warning: A genome was provided but no training set to learn the contamination profile (-c). "
-                  "You provided sliding window parameters (either -w -t), "
-                  "I will compute the genome microcomposition signature and "
-                  "I will compute the distance of every window microcomposition to that of the whole genome ", file=sys.stderr)           
-            #frq_wins=list()
+            print("Computing microcomposition signaure and distances to genome")
             
-            path = str(os.path.basename(options.genome)) + ".mcp_windows_vs_whole_" + options.dist+".dist"
-            with open(path, 'w') as outf:
-                for record in SeqIO.parse(options.genome, "fasta"):
-                    windows_distances = sliding_windows_distances(str(record.seq), seq_id=record.id, mcp_comparison=genome, 
-                                                                  position=True, dist=options.dist, 
-                                                                  windows_size=options.windows_size if options.windows_size else 5000, 
-                                                                  windows_step=options.windows_step if options.windows_step else 500, 
-                                                                  ksize=options.k)
-                    for t in windows_distances:
-                        outf.write(str("\t".join(map(str,t)))+"\n")
-        # TBF: else?
-        #LM no else here, if the exact set of parameters given by the user: no conta, no window parameter, nothing can be done... if the sliding window parameters are given, we can scan the genome windows against the whole genome profile, aka HGT detection. Otherwise, we skip to the next set of command line parameters that could make sense.
 
-    else: # TBF: equivalent no? genome is always here (required argument) and conta is present
-        #LM yep ^^ you confirm that the parser will enforce the presence of the genome? the lines testing that were removed
-    #if(options.genome and options.conta):
-        print("A genome and a training set to learn the contamination profile was provided so "
-              "I will compute the microcomposition signature of the genome (-i) or host training set if provided (-r), "
-              "that of the contamination training set (-c) and those of the sliding windows along the assembly (-i). "
-              "with all of that I will output the distances of the microcomposition of every windows compared "
-              "to both microcompositions of the contaminant and the host genome.")
-        
-        fname = str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"
-        if(options.host):
-            print("using the provided host training set to learn the microcomposition")
-            target = options.host
-            fname = fname+ "host_"+str(os.path.basename(options.host))+"_"+options.dist+".dist"
-        else:
-            print("No host training set provided, I will use the whole genome to learn the microcomposition")
-            target = options.genome
-            fname = fname+"wholegenome_"+options.dist+".dist"
-        #print(fname+" totot")
-            
-        whole_seq=Seq("")
-        for record in SeqIO.parse(target, "fasta"):
-            whole_seq.seq = str(whole_seq)+"N"+str(record.seq)
-            
-        genome = numpy.array(frequency(seq=str(whole_seq.seq),ksize=options.k))
+    else:
+        # one vector shape of ksize**4
+        conta =  compute_whole_composition(options.conta, options.pattern, options.strand, nb_jobs=options.threads_max)
+          
+    
+    with open(output, 'w') as outf:
+        for res in sliding_windows_distances(options.genome, mcp_comparison=genome, mth_dist=options.dist, pattern=options.pattern,
+                                             windows_size=options.windows_size, windows_step=options.windows_step, options=options):
+            for t in res:
+                outf.write(str("\t".join(map(str,t)))+"\n")
 
-        whole_conta = Seq("")
-        for record in SeqIO.parse(options.conta, "fasta"):
-            whole_conta.seq=str(whole_conta)+"N"+str(record.seq)
-            
-        conta = numpy.array(frequency(seq=str(whole_conta.seq),ksize=options.k))
-  
-        with open(fname, 'w') as outf:
-            for record in SeqIO.parse(options.genome, "fasta"):
-                #f.write('>'+str(record.id)+"\n")
-                #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-                windows_distances = sliding_windows_distances(str(record.seq), seq_id=record.id, mcp_comparison=genome, 
-                                                              position=True, dist=options.dist, 
-                                                              windows_size=options.windows_size if options.windows_size else 5000, 
-                                                              windows_step=options.windows_step if options.windows_step else 500, 
-                                                              ksize=options.k)
-                #windows_distances=list()
-                for t in windows_distances:
+    if options.conta:
+        output = os.path.join(options.workdir, base_genome+".mcp_hostwindows_vs_"+"conta_"+base_conta+"_"+options.dist+".dist")
+        with open(output, 'w') as outf:
+            for res in sliding_windows_distances(options.genome, mcp_comparison=conta, mth_dist=options.dist, pattern=options.pattern,
+                                             windows_size=options.windows_size, windows_step=options.windows_step, options=options):
+                for t in res:
                     outf.write(str("\t".join(map(str,t)))+"\n")
-        
-        fname = str(os.path.basename(options.genome))+".mcp_hostwindows_vs_"+"conta_"+str(os.path.basename(options.conta))+"_"+options.dist+".dist"
-        #print(fname+" totowdawdt")
-        with open(fname, 'w') as outf:
-            for record in SeqIO.parse(options.genome, "fasta"):
-                #f.write('>'+str(record.id)+"\n")
-                #frq_wins = sliding_windows_frequencies(str(record.seq), windows_size=options.windows_size if options.windows_size else 5000, windows_step=options.windows_step if options.windows_step else 500, ksize=options.k if options.k else 4)
-                windows_distances = sliding_windows_distances(str(record.seq), seq_id=record.id, mcp_comparison=conta,
-                                                              position=True, dist=options.dist, 
-                                                              windows_size=options.windows_size if options.windows_size else 5000, 
-                                                              windows_step=options.windows_step if options.windows_step else 500, 
-                                                              ksize=options.k if options.k else 4)
-                #windows_distances=list()
-                for t in windows_distances:
-                    outf.write(str("\t".join(map(str,t)))+"\n")
-
+                
     sys.exit(0)
 
 if __name__ == "__main__":
